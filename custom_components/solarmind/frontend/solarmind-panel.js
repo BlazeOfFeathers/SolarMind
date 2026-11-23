@@ -1676,7 +1676,8 @@ ne.styles = [
         background: var(--sm-surface); outline: none;
       }
       input:focus, select:focus { border-color: var(--primary-color); box-shadow: inset 0 0 0 1px var(--primary-color); }
-      .unit { position: absolute; right: 14px; color: var(--secondary-text-color); font-size: 14px; pointer-events: none; }
+      .wrap input { padding-right: 56px; }
+      .unit { position: absolute; right: 36px; color: var(--secondary-text-color); font-size: 14px; pointer-events: none; }
       .help { font-size: 12px; color: var(--secondary-text-color); line-height: 1.4; }
       .ent-state { font-size: 12px; color: var(--secondary-text-color); }
       .bool { display: flex; align-items: center; gap: 16px; min-height: 48px; }

@@ -85,7 +85,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
                     "name": "solarmind-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "js_url": f"/{PANEL_URL}/{PANEL_JS}?v={VERSION}",
+                    "module_url": f"/{PANEL_URL}/{PANEL_JS}?v={VERSION}",
                 }
             },
         )
