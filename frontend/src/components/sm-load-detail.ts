@@ -1,0 +1,378 @@
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
+import { deleteLoad, saveLoad } from "../api";
+import { t } from "../i18n";
+import { cardStyles, fmtKwh, fmtSec, fmtW, splitW, tokens } from "../styles/tokens";
+import type { Hass, LiveLoad, Load } from "../types";
+import { modeOptions, reasonTone } from "./common";
+import type { FieldSpec } from "./shared/sm-form";
+import "./shared/sm-dialog";
+import "./shared/sm-form";
+import "./shared/sm-list-row";
+import "./shared/sm-segmented";
+import "./shared/sm-sparkline";
+import "./shared/sm-toggle";
+
+const isEv = (l: Record<string, any>) => l.type === "ev";
+const isTesla = (l: Record<string, any>) => isEv(l) && l.ev_driver === "tesla_ble_proxy";
+
+interface RowSpec {
+  icon: string;
+  title: string;
+  secondary?: (l: Load) => string;
+  value?: (l: Load, lv?: LiveLoad) => string;
+  fields?: FieldSpec[];
+  toggle?: string;
+  show?: (l: Load) => boolean;
+}
+
+interface SectionSpec {
+  title: string;
+  meta?: (l: Load) => string;
+  show?: (l: Load) => boolean;
+  rows: RowSpec[];
+}
+
+const sec = (v: number | null | undefined) => fmtSec(v ?? 0);
+
+const entityName = (hass: Hass, id: string | null | undefined) => {
+  if (!id) return t("detail.not_set");
+  const st = hass.states[id];
+  return st ? `${st.attributes.friendly_name ?? id}` : id;
+};
+
+const onOff = (hass: Hass, id: string | null | undefined) => {
+  const st = id ? hass.states[id] : undefined;
+  if (!st) return "";
+  return st.state === "on" ? t("detail.on") : st.state === "off" ? t("detail.off") : st.state;
+};
+
+const entityValue = (hass: Hass, id: string | null | undefined) => {
+  if (!id) return "";
+  const st = hass.states[id];
+  return st ? `${st.state}${st.attributes.unit_of_measurement ? " " + st.attributes.unit_of_measurement : ""}` : "?";
+};
+
+@customElement("sm-load-detail")
+export class SmLoadDetail extends LitElement {
+  @property({ attribute: false }) hass!: Hass;
+  @property({ attribute: false }) load!: Load;
+  @property({ attribute: false }) live?: LiveLoad;
+  @property({ attribute: false }) spark: [number, number, number][] = [];
+  @property({ type: Number }) priority = 1;
+  @property({ type: Number }) count = 1;
+  @state() private _dialog: { title: string; fields: FieldSpec[] } | null = null;
+  @state() private _draft: Record<string, any> = {};
+  @state() private _busy = false;
+  @state() private _error = "";
+  @state() private _confirmDelete = false;
+
+  static styles = [
+    tokens,
+    cardStyles,
+    css`
+      :host { display: block; }
+      .layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+      @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+      .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+      .hero { overflow: hidden; }
+      .hero-head { display: flex; align-items: center; gap: 12px; padding: 20px 20px 0; }
+      .hero-ic { width: 40px; height: 40px; border-radius: 50%; background: var(--sm-fill); display: grid; place-items: center; --mdc-icon-size: 22px; color: var(--secondary-text-color); }
+      .hero-ic.active { color: var(--sm-solar); }
+      .hero-name { font-size: 17px; font-weight: 500; display: flex; align-items: center; gap: 4px; }
+      .hero-name button.icon { width: 32px; height: 32px; --mdc-icon-size: 18px; color: var(--secondary-text-color); }
+      .hero-sub { font-size: 13px; color: var(--secondary-text-color); }
+      .big { display: flex; align-items: flex-start; gap: 6px; padding: 8px 20px 0; }
+      .big .v { font-size: 64px; font-weight: 300; line-height: 1.05; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
+      .big .u { font-size: 22px; color: var(--secondary-text-color); margin-top: 8px; }
+      .info { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 20px 0; font-size: 13px; color: var(--secondary-text-color); --mdc-icon-size: 15px; }
+      .info span { display: inline-flex; align-items: center; gap: 4px; }
+      .status { --mdc-icon-size: 15px; }
+      .status.solar { color: var(--sm-solar-text); }
+      .status.grid { color: var(--sm-grid-text); }
+      .status.warn { color: var(--sm-warn-text); }
+      .status.ok { color: var(--sm-ok-text); }
+      hr { border: none; border-top: 1px solid var(--sm-border); margin: 16px 20px; }
+      .mode { padding: 0 20px 20px; }
+      .mode .l { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 8px; }
+      .mode .d { font-size: 13px; color: var(--secondary-text-color); margin-top: 8px; }
+      .list { padding-bottom: 8px; }
+      .list .card-head { padding-bottom: 4px; }
+    `,
+  ];
+
+  private get _sections(): SectionSpec[] {
+    const h = this.hass;
+    return [
+      {
+        title: t("detail.device"),
+        rows: [
+          {
+            icon: "mdi:power-socket-eu", title: t("f.switch_entity"), show: (l) => !isEv(l),
+            secondary: (l) => entityName(h, l.switch_entity), value: (l) => onOff(h, l.switch_entity),
+            fields: [{ key: "switch_entity", kind: "entity", domains: ["switch", "input_boolean", "light"] }],
+          },
+          {
+            icon: "mdi:flash", title: t("f.nominal_power_w"), show: (l) => !isEv(l),
+            secondary: () => t("detail.nominal_help"), value: (l) => fmtW(l.nominal_power_w),
+            fields: [{ key: "nominal_power_w", kind: "number", unit: "W", step: 50 }, { key: "full_threshold_w", kind: "number", unit: "W" }],
+          },
+          {
+            icon: "mdi:ev-plug-type2", title: t("f.ev_driver"), show: isEv,
+            secondary: (l) => (isTesla(l) ? `${l.ev_proxy_url} · ${l.ev_vin || "VIN?"}` : entityName(h, l.ev_charge_switch_entity)),
+            value: (l) => t(`f.ev_driver.${l.ev_driver}`),
+            fields: [
+              { key: "ev_driver", kind: "select", options: ["entities", "tesla_ble_proxy"].map((o) => ({ value: o, label: t(`f.ev_driver.${o}`) })) },
+              { key: "ev_proxy_url", kind: "text", show: isTesla, helper: t("f.ev_proxy_url.help") },
+              { key: "ev_vin", kind: "text", show: isTesla },
+              { key: "ev_charge_switch_entity", kind: "entity", domains: ["switch", "input_boolean"], show: (l) => !isTesla(l) },
+              { key: "ev_current_entity", kind: "entity", domains: ["number", "input_number"], show: (l) => !isTesla(l) },
+              { key: "ev_plugged_entity", kind: "entity", domains: ["binary_sensor", "sensor"], show: (l) => !isTesla(l) },
+            ],
+          },
+          {
+            icon: "mdi:meter-electric-outline", title: t("detail.power_sensor"),
+            secondary: (l) => entityName(h, l.power_entity), value: (l) => entityValue(h, l.power_entity),
+            fields: [{ key: "power_entity", kind: "entity", domains: ["sensor"], helper: t("f.power_entity.help") }],
+          },
+          {
+            icon: "mdi:thermometer", title: t("detail.temp_sensor"), show: (l) => !isEv(l),
+            secondary: (l) => entityName(h, l.temperature_entity),
+            value: (l) => (l.max_temperature != null ? `${entityValue(h, l.temperature_entity)} · max ${l.max_temperature} °C` : entityValue(h, l.temperature_entity)),
+            fields: [
+              { key: "temperature_entity", kind: "entity", domains: ["sensor"] },
+              { key: "max_temperature", kind: "number", nullable: true, unit: "°C" },
+            ],
+          },
+          {
+            icon: "mdi:battery-charging", title: t("f.ev_soc_entity"), show: isEv,
+            secondary: (l) => (l.ev_soc_entity ? entityName(h, l.ev_soc_entity) : isTesla(l) ? t("detail.from_proxy") : t("detail.not_set")),
+            value: (l, lv) => (lv?.soc != null ? `${Math.round(lv.soc)}%` : ""),
+            fields: [{ key: "ev_soc_entity", kind: "entity", domains: ["sensor"] }],
+          },
+        ],
+      },
+      {
+        title: t("f.section.ev"),
+        show: isEv,
+        rows: [
+          {
+            icon: "mdi:current-ac", title: t("detail.current"),
+            secondary: (l) => `${l.ev_phases} ${t("detail.phase")} · ${t("detail.step")} ${l.ev_current_step_interval_s} s`,
+            value: (l) => `${l.ev_min_current}–${l.ev_max_current} A`,
+            fields: [
+              { key: "ev_phases", kind: "select", options: [{ value: "1", label: "1" }, { value: "3", label: "3" }] },
+              { key: "ev_min_current", kind: "number", unit: "A" },
+              { key: "ev_max_current", kind: "number", unit: "A" },
+              { key: "ev_current_step_interval_s", kind: "number", unit: "s" },
+            ],
+          },
+          {
+            icon: "mdi:battery-alert-variant-outline", title: t("f.ev_min_soc"), secondary: () => t("detail.min_soc_help"),
+            value: (l) => (l.ev_min_soc != null ? `${l.ev_min_soc}%` : t("detail.off")),
+            fields: [{ key: "ev_min_soc", kind: "number", nullable: true, unit: "%" }],
+          },
+        ],
+      },
+      {
+        title: t("detail.behaviour"),
+        rows: [
+          {
+            icon: "mdi:timer-play-outline", title: t("detail.start_stop"),
+            secondary: (l) => t("detail.start_stop_sub").replace("{start}", sec(l.start_delay_s)).replace("{stop}", sec(l.stop_delay_s)),
+            value: (l) => `+${l.start_margin_w} W`,
+            fields: [
+              { key: "start_delay_s", kind: "number", unit: "s" },
+              { key: "stop_delay_s", kind: "number", unit: "s" },
+              { key: "start_margin_w", kind: "number", unit: "W" },
+            ],
+          },
+          {
+            icon: "mdi:timer-lock-outline", title: t("detail.min_times"),
+            secondary: (l) => `${t("detail.on")} ${sec(l.min_on_s)} · ${t("detail.off_short")} ${sec(l.min_off_s)}`,
+            fields: [
+              { key: "min_on_s", kind: "number", unit: "s" },
+              { key: "min_off_s", kind: "number", unit: "s" },
+            ],
+          },
+          {
+            icon: "mdi:transmission-tower-import", title: t("f.allowed_import_w"), secondary: () => t("detail.allowed_import_help"),
+            value: (l) => fmtW(l.allowed_import_w),
+            fields: [{ key: "allowed_import_w", kind: "number", unit: "W", step: 50 }],
+          },
+          { icon: "mdi:chart-bell-curve-cumulative", title: t("f.peak_shed"), secondary: () => t("detail.peak_shed_help"), toggle: "peak_shed" },
+        ],
+      },
+      {
+        title: t("f.section.night"),
+        meta: (l) => (l.mode === "solar_night" ? "" : t("detail.night_inactive")),
+        rows: [
+          {
+            icon: "mdi:weather-night", title: t("detail.night_when"),
+            secondary: (l) =>
+              isEv(l) && (l.ev_soc_entity || isTesla(l))
+                ? t("detail.night_when_soc").replace("{soc}", String(l.ev_target_soc))
+                : l.night_min_temperature != null
+                  ? t("detail.night_when_temp").replace("{t}", String(l.night_min_temperature))
+                  : t("detail.night_when_kwh").replace("{kwh}", String(l.night_min_solar_kwh)),
+            fields: [
+              { key: "night_min_solar_kwh", kind: "number", unit: "kWh", step: 0.1, show: (l) => !(isEv(l) && (l.ev_soc_entity || isTesla(l))) },
+              { key: "night_min_temperature", kind: "number", unit: "°C", nullable: true, show: (l) => !isEv(l) },
+              { key: "ev_target_soc", kind: "number", unit: "%", show: isEv },
+            ],
+          },
+          {
+            icon: "mdi:battery-arrow-up-outline", title: t("detail.night_amount"), show: (l) => !isEv(l),
+            value: (l) => (l.night_target_kwh ? fmtKwh(l.night_target_kwh, 1) : t("detail.until_full")),
+            fields: [{ key: "night_target_kwh", kind: "number", unit: "kWh", step: 0.1 }],
+          },
+          {
+            icon: "mdi:weather-sunny-alert", title: t("detail.forecast_skip"), secondary: () => t("detail.forecast_skip_help"),
+            value: (l) => (l.night_skip_forecast_kwh ? `> ${l.night_skip_forecast_kwh} kWh` : t("detail.off")),
+            fields: [{ key: "night_skip_forecast_kwh", kind: "number", unit: "kWh", nullable: true, step: 0.5 }],
+          },
+        ],
+      },
+      {
+        title: t("f.section.legionella"),
+        show: (l) => !isEv(l),
+        rows: [
+          { icon: "mdi:bacteria-outline", title: t("f.legionella_enabled"), secondary: () => t("f.legionella.hint"), toggle: "legionella_enabled" },
+          {
+            icon: "mdi:thermometer-high", title: t("detail.legionella_rule"), show: (l) => !!l.legionella_enabled,
+            value: (l) => `${l.legionella_temperature} °C / ${l.legionella_interval_days} d`,
+            fields: [
+              { key: "legionella_temperature", kind: "number", unit: "°C" },
+              { key: "legionella_interval_days", kind: "number", unit: t("detail.days") },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+
+  private _openDialog(title: string, fields: FieldSpec[]) {
+    this._draft = { ...this.load };
+    this._error = "";
+    this._dialog = { title, fields };
+  }
+
+  private async _save(changes: Record<string, any>) {
+    this._busy = true;
+    this._error = "";
+    try {
+      const res = await saveLoad(this.hass, { ...this.load, ...changes });
+      this.dispatchEvent(new CustomEvent("load-saved", { detail: { load: res.load, renamed: res.load.name !== this.load.name }, bubbles: true, composed: true }));
+      this._dialog = null;
+    } catch (err: any) {
+      this._error = err?.message ?? String(err);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private async _delete() {
+    if (!this._confirmDelete) {
+      this._confirmDelete = true;
+      return;
+    }
+    await deleteLoad(this.hass, this.load.id);
+    this.dispatchEvent(new CustomEvent("load-deleted", { detail: { id: this.load.id }, bubbles: true, composed: true }));
+  }
+
+  private _move(delta: number) {
+    this.dispatchEvent(new CustomEvent("move-load", { detail: { id: this.load.id, delta }, bubbles: true, composed: true }));
+  }
+
+  private _hero() {
+    const l = this.load;
+    const lv = this.live;
+    const [v, u] = splitW(lv?.power_w ?? 0);
+    const reason = lv?.reason ?? "idle";
+    const tone = reasonTone(reason);
+    const icon = l.icon || (isEv(l) ? "mdi:ev-station" : "mdi:water-boiler");
+    const nominal = isEv(l) ? l.ev_max_current * 230 * l.ev_phases : l.nominal_power_w;
+    const share = lv?.kwh_today ? (lv.solar_kwh_today ?? 0) / lv.kwh_today : null;
+    return html`<div class="card hero">
+      <div class="hero-head">
+        <div class="hero-ic ${lv?.is_on && (lv?.power_w ?? 0) > 1 ? "active" : ""}"><ha-icon .icon=${icon}></ha-icon></div>
+        <div>
+          <div class="hero-name">${l.name}
+            <button class="icon" title=${t("load.edit")} @click=${() => this._openDialog(t("detail.name_icon"), [
+              { key: "name", kind: "text" }, { key: "icon", kind: "text", helper: t("f.icon.help") },
+            ])}><ha-icon icon="mdi:pencil"></ha-icon></button>
+          </div>
+          <div class="hero-sub"><span class="status ${tone}">${t(`reason.${reason}`)}</span> · ${t(`type.${l.type}`)}</div>
+        </div>
+      </div>
+      <div class="big"><span class="v">${v}</span><span class="u">${u}</span></div>
+      <sm-sparkline .points=${this.spark} .max=${nominal} .height=${90} .label=${t("detail.last_6h")}></sm-sparkline>
+      <div class="info">
+        ${lv?.temperature != null ? html`<span><ha-icon icon="mdi:thermometer"></ha-icon>${lv.temperature.toFixed(1)} °C</span>` : nothing}
+        ${lv?.soc != null ? html`<span><ha-icon icon="mdi:battery-charging"></ha-icon>${Math.round(lv.soc)}%</span>` : nothing}
+        ${lv?.current_a != null && isEv(l) ? html`<span><ha-icon icon="mdi:current-ac"></ha-icon>${Math.round(lv.current_a)} A</span>` : nothing}
+        <span><ha-icon icon="mdi:lightning-bolt"></ha-icon>${fmtKwh(lv?.kwh_today ?? 0, 1)} ${t("load.today")}</span>
+        ${share !== null ? html`<span><ha-icon icon="mdi:white-balance-sunny"></ha-icon>${Math.round(share * 100)}% ${t("load.from_solar")}</span>` : nothing}
+      </div>
+      <hr />
+      <div class="mode">
+        <div class="l">${t("f.mode")}</div>
+        <sm-segmented .options=${modeOptions()} .value=${l.mode}
+          @value-changed=${(e: CustomEvent) => this.dispatchEvent(new CustomEvent("set-mode", { detail: { id: l.id, mode: e.detail.value }, bubbles: true, composed: true }))}></sm-segmented>
+        <div class="d">${t(`mode.${l.mode}.desc`)}</div>
+      </div>
+    </div>`;
+  }
+
+  private _controlCard() {
+    const l = this.load;
+    return html`<div class="card list">
+      <sm-list-row icon="mdi:power" variant="primary" .heading=${t("f.enabled")} .secondary=${t("detail.enabled_help")}>
+        <sm-toggle .checked=${l.enabled} @change=${(e: CustomEvent) => this._save({ enabled: e.detail.checked })}></sm-toggle>
+      </sm-list-row>
+      <sm-list-row icon="mdi:sort-numeric-ascending" .heading=${t("detail.priority")}
+        .secondary=${t("detail.priority_sub").replace("{n}", String(this.priority)).replace("{c}", String(this.count))}>
+        <button class="icon" ?disabled=${this.priority <= 1} @click=${() => this._move(-1)}><ha-icon icon="mdi:arrow-up"></ha-icon></button>
+        <button class="icon" ?disabled=${this.priority >= this.count} @click=${() => this._move(1)}><ha-icon icon="mdi:arrow-down"></ha-icon></button>
+      </sm-list-row>
+      <sm-list-row icon="mdi:chart-line" .heading=${t("load.analytics")} .secondary=${t("detail.analytics_sub")} clickable
+        @row-click=${() => this.dispatchEvent(new CustomEvent("open-analytics", { detail: { id: l.id }, bubbles: true, composed: true }))}></sm-list-row>
+      <sm-list-row icon="mdi:delete-outline" variant="danger" .heading=${this._confirmDelete ? t("load.delete_confirm") : t("load.delete")}
+        clickable @row-click=${this._delete}></sm-list-row>
+    </div>`;
+  }
+
+  private _section(s: SectionSpec) {
+    const l = this.load;
+    if (s.show && !s.show(l)) return nothing;
+    const rows = s.rows.filter((r) => !r.show || r.show(l));
+    return html`<div class="card list">
+      <div class="card-head"><h2>${s.title}</h2>${s.meta && s.meta(l) ? html`<span class="meta">${s.meta(l)}</span>` : nothing}</div>
+      ${rows.map((r) =>
+        r.toggle
+          ? html`<sm-list-row .icon=${r.icon} .heading=${r.title} .secondary=${r.secondary?.(l) ?? ""}>
+              <sm-toggle .checked=${!!l[r.toggle]} @change=${(e: CustomEvent) => this._save({ [r.toggle!]: e.detail.checked })}></sm-toggle>
+            </sm-list-row>`
+          : html`<sm-list-row .icon=${r.icon} .heading=${r.title} .secondary=${r.secondary?.(l) ?? ""} .value=${r.value?.(l, this.live) ?? ""}
+              clickable @row-click=${() => this._openDialog(r.title, r.fields ?? [])}></sm-list-row>`,
+      )}
+    </div>`;
+  }
+
+  render() {
+    const sections = this._sections;
+    return html`
+      <div class="layout">
+        <div class="col">${this._hero()}${this._controlCard()}</div>
+        <div class="col">${sections.map((s) => this._section(s))}</div>
+      </div>
+      ${this._dialog
+        ? html`<sm-dialog .heading=${this._dialog.title} .busy=${this._busy} .error=${this._error}
+            @closed=${() => (this._dialog = null)} @save=${() => this._save(this._draft)}>
+            <sm-form .hass=${this.hass} .fields=${this._dialog.fields} .data=${this._draft}
+              @value-changed=${(e: CustomEvent) => (this._draft = { ...this._draft, [e.detail.key]: e.detail.value })}></sm-form>
+          </sm-dialog>`
+        : nothing}
+    `;
+  }
+}
