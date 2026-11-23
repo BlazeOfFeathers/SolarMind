@@ -30,6 +30,7 @@ from ..const import (
     R_HOLD_MIN_ON,
     R_IDLE,
     R_LEGIONELLA,
+    R_MIN_POWER,
     R_MIN_SOC,
     R_MODE_OFF,
     R_NIGHT,
@@ -347,6 +348,9 @@ def _decide_solar(
         else:
             budget = solar_pool - margin
         amps = min(cfg["ev_max_current"], math.floor(budget / wpa))
+        floor_amps = _ev_floor_amps(cfg, st, wpa)
+        if floor_amps and amps < floor_amps:
+            return _decide_ev_floor(cfg, st, rt, site, solar_pool, headroom, floor_amps, wpa)
         if amps < cfg["ev_min_current"]:
             over_budget = headroom != INF and cur_power - solar_pool > headroom
             reason = R_PEAK if over_budget else R_NO_SURPLUS
@@ -369,6 +373,44 @@ def _decide_solar(
     if solar_pool >= nominal + margin:
         return _with_timing(cfg, st, rt, site.now, Decision(lid, True, reason=R_SOLAR, allocated_w=nominal))
     return _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_NO_SURPLUS))
+
+
+def _ev_floor_amps(cfg: dict[str, Any], st: LoadState, wpa: float) -> int:
+    """Amps the car always gets in the solar modes (0 = no minimum power set).
+
+    The minimum stops once the car reaches its target SoC (when the SoC is known),
+    so the grid never fills the battery to the top; surplus still may.
+    """
+    min_w = cfg.get("ev_min_power_w") or 0
+    if min_w <= 0:
+        return 0
+    if st.soc is not None and st.soc >= cfg.get("ev_target_soc", 80):
+        return 0
+    amps = math.ceil(min_w / wpa - 1e-9)
+    return int(max(cfg["ev_min_current"], min(cfg["ev_max_current"], amps)))
+
+
+def _decide_ev_floor(
+    cfg: dict[str, Any],
+    st: LoadState,
+    rt: LoadRuntime,
+    site: SiteState,
+    solar_pool: float,
+    headroom: float,
+    floor_amps: int,
+    wpa: float,
+) -> Decision:
+    """Charge at the minimum power: solar first, the rest from the grid."""
+    lid = cfg["id"]
+    amps = floor_amps
+    if headroom != INF and cfg.get("peak_shed", True):
+        amps = min(amps, math.floor((solar_pool + headroom) / wpa))
+        if amps < cfg["ev_min_current"]:
+            rt.pending_on = None
+            return _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_PEAK), force=True)
+    reason = R_PEAK if amps < floor_amps else R_MIN_POWER
+    dec = Decision(lid, True, current_a=int(amps), reason=reason, allocated_w=amps * wpa, wants_grid=True)
+    return _with_timing(cfg, st, rt, site.now, _rate_limit_current(cfg, st, rt, site.now, dec), grid=True)
 
 
 def _rate_limit_current(cfg: dict[str, Any], st: LoadState, rt: LoadRuntime, now: float, dec: Decision) -> Decision:

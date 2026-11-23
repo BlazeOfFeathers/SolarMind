@@ -58,6 +58,7 @@
           "peak_guard": "Limited by peak guard",
           "legionella": "Legionella cycle",
           "min_soc": "Below minimum charge",
+          "min_power": "Charging at minimum power",
           "target_reached": "Target reached",
           "min_on_time": "Minimum on time",
           "min_off_time": "Minimum off time",

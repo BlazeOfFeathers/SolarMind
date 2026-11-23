@@ -58,6 +58,7 @@
           "peak_guard": "Beperkt door piekbewaking",
           "legionella": "Legionellacyclus",
           "min_soc": "Onder minimum lading",
+          "min_power": "Laden op minimumvermogen",
           "target_reached": "Doel bereikt",
           "min_on_time": "Minimale aan-tijd",
           "min_off_time": "Minimale uit-tijd",

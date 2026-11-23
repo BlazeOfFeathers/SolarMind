@@ -172,6 +172,11 @@ export class SmLoadDetail extends LitElement {
             value: (l) => (l.ev_min_soc != null ? `${l.ev_min_soc}%` : t("detail.off")),
             fields: [{ key: "ev_min_soc", kind: "number", nullable: true, unit: "%" }],
           },
+          {
+            icon: "mdi:speedometer-slow", title: t("f.ev_min_power_w"), secondary: () => t("detail.min_power_help"),
+            value: (l) => (l.ev_min_power_w ? fmtW(l.ev_min_power_w) : t("detail.off")),
+            fields: [{ key: "ev_min_power_w", kind: "number", nullable: true, unit: "W" }],
+          },
         ],
       },
       {

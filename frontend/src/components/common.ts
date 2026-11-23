@@ -13,7 +13,7 @@ export const modeOptions = (): SegOption[] =>
 
 export const reasonTone = (r: string): string => {
   if (r === "solar") return "solar";
-  if (["night", "always_on", "legionella", "min_soc"].includes(r)) return "grid";
+  if (["night", "always_on", "legionella", "min_soc", "min_power"].includes(r)) return "grid";
   if (r === "peak_guard" || r === "unavailable") return "warn";
   if (r === "target_reached") return "ok";
   return "";
@@ -26,6 +26,7 @@ export const reasonIcon = (r: string): string =>
     always_on: "mdi:power-plug",
     legionella: "mdi:bacteria-outline",
     min_soc: "mdi:battery-alert-variant-outline",
+    min_power: "mdi:speedometer-slow",
     peak_guard: "mdi:transmission-tower",
     unavailable: "mdi:alert-circle-outline",
     target_reached: "mdi:check-circle-outline",

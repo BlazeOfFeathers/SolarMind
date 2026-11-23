@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
@@ -41,6 +41,7 @@ R_MODE_OFF = "mode_off"
 R_PEAK = "peak_guard"
 R_LEGIONELLA = "legionella"
 R_MIN_SOC = "min_soc"
+R_MIN_POWER = "min_power"
 R_TARGET_REACHED = "target_reached"
 R_HOLD_MIN_ON = "min_on_time"
 R_HOLD_MIN_OFF = "min_off_time"
@@ -60,6 +61,7 @@ REASONS = [
     R_PEAK,
     R_LEGIONELLA,
     R_MIN_SOC,
+    R_MIN_POWER,
     R_TARGET_REACHED,
     R_HOLD_MIN_ON,
     R_HOLD_MIN_OFF,
@@ -145,5 +147,6 @@ DEFAULT_LOAD: dict = {
     "ev_max_current": 16,
     "ev_min_soc": None,  # charge from grid immediately below this SoC
     "ev_target_soc": 80,  # night fallback target
+    "ev_min_power_w": None,  # solar modes: always charge at least this, topped up from the grid
     "ev_current_step_interval_s": 30,
 }

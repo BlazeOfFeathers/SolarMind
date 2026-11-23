@@ -14,7 +14,7 @@
 - **Detectie van een volle boiler**: als de stekker aan staat maar de boiler niets meer trekt (thermostaat), gaat het vrijgekomen overschot naar de volgende verbruiker.
 - **Capaciteitstarief (piekbewaking)**: SolarMind houdt het kwartiergemiddelde van je afname bij en schakelt verbruikers af, of verlaagt de laadstroom, voordat je maandpiek stijgt.
 - **Legionellacyclus** voor boilers met een temperatuursensor.
-- **EV**: laadstroom volgt het overschot (1 of 3 fasen), minimum-%, nachtladen tot een doel-%. Je kan de Tesla rechtstreeks via de [Tesla BLE HTTP proxy](https://github.com/wimaha/TeslaBleHttpProxy) aansturen, of via bestaande HA-entities (laadschakelaar + laadstroom).
+- **EV**: laadstroom volgt het overschot (1 of 3 fasen), minimum-%, een minimaal laadvermogen (bij weinig zon aangevuld van het net), nachtladen tot een doel-%. Je kan de Tesla rechtstreeks via de [Tesla BLE HTTP proxy](https://github.com/wimaha/TeslaBleHttpProxy) aansturen, of via bestaande HA-entities (laadschakelaar + laadstroom).
 - **Analytics** per verbruiker en voor het hele huis: tijdlijn met zon/net-verdeling en waarom iets aan of uit ging, samenvatting (kWh, aandeel zon, looptijd, starts, besparing), per dag, dagritme, laadsessies en kwartierpieken.
 - **Entities** per verbruiker (modus-select, vermogen, energie vandaag, aandeel zon, status, actief) en voor het huis (overschot, kwartiergemiddelde, maandpiek, ...), voor je dashboards en automaties.
 
@@ -35,7 +35,7 @@ Elke 10 seconden:
 
 1. `basis = netvermogen − vermogen van de gestuurde verbruikers` (wat het huis zou afnemen zonder je verbruikers; negatief = overschot).
 2. Het overschot wordt van boven naar onder verdeeld. Een verbruiker die al draait, rekent met zijn gemeten vermogen.
-3. Verbruikers die het net mogen gebruiken (*altijd aan*, nachtaanvulling, legionella, EV onder minimum-%) krijgen daarnaast de ruimte die de piekbewaking nog toelaat dit kwartier.
+3. Verbruikers die het net mogen gebruiken (*altijd aan*, nachtaanvulling, legionella, EV onder minimum-% of op minimaal laadvermogen) krijgen daarnaast de ruimte die de piekbewaking nog toelaat dit kwartier.
 4. Start- en stopvertragingen en minimale looptijden worden toegepast. De piekbewaking grijpt meteen in.
 
 ## Tesla via BLE HTTP proxy
