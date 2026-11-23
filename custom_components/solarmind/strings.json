@@ -1,0 +1,100 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SolarMind",
+        "description": "Set up SolarMind. Sensors and loads are configured in the SolarMind panel in the sidebar."
+      }
+    },
+    "abort": {
+      "already_configured": "SolarMind is already set up.",
+      "single_instance_allowed": "SolarMind is already set up."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "surplus": {
+        "name": "Solar surplus"
+      },
+      "managed_power": {
+        "name": "Managed loads power"
+      },
+      "quarter_average": {
+        "name": "Quarter-hour average import"
+      },
+      "quarter_projected": {
+        "name": "Quarter-hour projected import"
+      },
+      "month_peak": {
+        "name": "Monthly peak"
+      },
+      "peak_limit": {
+        "name": "Peak limit"
+      },
+      "self_consumption_today": {
+        "name": "Self-consumption today"
+      },
+      "power": {
+        "name": "Power"
+      },
+      "energy_today": {
+        "name": "Energy today"
+      },
+      "solar_energy_today": {
+        "name": "Solar energy today"
+      },
+      "solar_share_today": {
+        "name": "Solar share today"
+      },
+      "status": {
+        "name": "Status",
+        "state": {
+          "idle": "Idle",
+          "solar": "Running on solar",
+          "no_surplus": "Waiting for surplus",
+          "night": "Night top-up",
+          "always_on": "Always on",
+          "mode_off": "Off",
+          "peak_guard": "Limited by peak guard",
+          "legionella": "Legionella cycle",
+          "min_soc": "Below minimum charge",
+          "target_reached": "Target reached",
+          "min_on_time": "Minimum on time",
+          "min_off_time": "Minimum off time",
+          "start_delay": "Starting soon",
+          "stop_delay": "Stopping soon",
+          "unavailable": "Unavailable",
+          "disabled": "Disabled",
+          "not_connected": "Not plugged in"
+        }
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "solar": "Solar only",
+          "solar_night": "Solar + night top-up",
+          "on": "Always on",
+          "off": "Off"
+        }
+      }
+    },
+    "switch": {
+      "control_enabled": {
+        "name": "Control enabled"
+      },
+      "load_enabled": {
+        "name": "Managed"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "Running"
+      },
+      "peak_guard_active": {
+        "name": "Peak guard active"
+      }
+    }
+  }
+}

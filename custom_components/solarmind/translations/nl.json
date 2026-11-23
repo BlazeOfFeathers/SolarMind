@@ -1,0 +1,100 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SolarMind",
+        "description": "Stel SolarMind in. Sensoren en verbruikers stel je in via het SolarMind-paneel in de zijbalk."
+      }
+    },
+    "abort": {
+      "already_configured": "SolarMind is al ingesteld.",
+      "single_instance_allowed": "SolarMind is al ingesteld."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "surplus": {
+        "name": "Zonne-overschot"
+      },
+      "managed_power": {
+        "name": "Vermogen gestuurde verbruikers"
+      },
+      "quarter_average": {
+        "name": "Kwartiergemiddelde afname"
+      },
+      "quarter_projected": {
+        "name": "Verwacht kwartiergemiddelde"
+      },
+      "month_peak": {
+        "name": "Maandpiek"
+      },
+      "peak_limit": {
+        "name": "Piekgrens"
+      },
+      "self_consumption_today": {
+        "name": "Zelfconsumptie vandaag"
+      },
+      "power": {
+        "name": "Vermogen"
+      },
+      "energy_today": {
+        "name": "Energie vandaag"
+      },
+      "solar_energy_today": {
+        "name": "Zonne-energie vandaag"
+      },
+      "solar_share_today": {
+        "name": "Aandeel zon vandaag"
+      },
+      "status": {
+        "name": "Status",
+        "state": {
+          "idle": "Inactief",
+          "solar": "Draait op zon",
+          "no_surplus": "Wacht op overschot",
+          "night": "Nachtaanvulling",
+          "always_on": "Altijd aan",
+          "mode_off": "Uit",
+          "peak_guard": "Beperkt door piekbewaking",
+          "legionella": "Legionellacyclus",
+          "min_soc": "Onder minimum lading",
+          "target_reached": "Doel bereikt",
+          "min_on_time": "Minimale aan-tijd",
+          "min_off_time": "Minimale uit-tijd",
+          "start_delay": "Start zo dadelijk",
+          "stop_delay": "Stopt zo dadelijk",
+          "unavailable": "Niet beschikbaar",
+          "disabled": "Uitgeschakeld",
+          "not_connected": "Niet ingeplugd"
+        }
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Modus",
+        "state": {
+          "solar": "Enkel zon",
+          "solar_night": "Zon + nachtaanvulling",
+          "on": "Altijd aan",
+          "off": "Uit"
+        }
+      }
+    },
+    "switch": {
+      "control_enabled": {
+        "name": "Sturing actief"
+      },
+      "load_enabled": {
+        "name": "Gestuurd"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "Actief"
+      },
+      "peak_guard_active": {
+        "name": "Piekbewaking actief"
+      }
+    }
+  }
+}
