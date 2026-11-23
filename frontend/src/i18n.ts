@@ -87,7 +87,9 @@ const nl: Record<string, string> = {
   "f.ev_min_current": "Minimum stroom",
   "f.ev_max_current": "Maximum stroom",
   "f.ev_min_soc": "Altijd laden onder",
-  "f.ev_min_power_w": "Minimaal laadvermogen",
+  "f.ev_min_power_w": "Minimaal laden",
+  "card.min_power_off": "Uit",
+  "card.min_power_help": "Laadt minstens dit vermogen, aangevuld van het net",
   "f.ev_target_soc": "Nachtladen tot",
   "f.ev_current_step_interval_s": "Stroom max. verhogen elke",
   "s.section.meter": "Energiemeter",
@@ -196,7 +198,6 @@ const nl: Record<string, string> = {
   "detail.phase": "fase(n)",
   "detail.step": "verhogen elke",
   "detail.min_soc_help": "Daaronder laadt de auto meteen, ook van het net",
-  "detail.min_power_help": "Bij te weinig zon laadt de auto toch minstens zoveel, aangevuld van het net (tot het nachtdoel)",
   "detail.off": "Uit",
   "detail.on": "Aan",
   "detail.off_short": "uit",
@@ -247,6 +248,10 @@ const nl: Record<string, string> = {
 };
 
 const en: Record<string, string> = {
+  "f.ev_min_power_w": "Minimum charge",
+  "card.min_power_off": "Off",
+  "card.min_power_help": "Always charges at least this, topped up from the grid",
+  "reason.min_power": "Charging at minimum power",
   "tab.overview": "Overview",
   "tab.analytics": "Analytics",
   "tab.settings": "Settings",

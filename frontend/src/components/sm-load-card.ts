@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { t } from "../i18n";
 import { cardStyles, fmtKwh, splitW, tokens } from "../styles/tokens";
 import type { LiveLoad, Load, Mode } from "../types";
@@ -14,6 +14,9 @@ export class SmLoadCard extends LitElement {
   @property({ attribute: false }) live?: LiveLoad;
   @property({ attribute: false }) spark: [number, number, number][] = [];
   @property({ type: Number }) priority = 1;
+  /** Pending minimum-power choice while the user is still clicking (amps, 0 = off). */
+  @state() private _minAmps: number | null = null;
+  private _minTimer?: number;
 
   static styles = [
     tokens,
@@ -51,6 +54,15 @@ export class SmLoadCard extends LitElement {
       .chart .hint { position: absolute; left: 12px; bottom: 8px; }
       .foot { padding: 0 16px 16px; margin-top: auto; }
       .foot .seg-wrap { padding-top: 8px; }
+      .minp { display: flex; align-items: center; gap: 8px; padding-top: 10px; font-size: 13px; color: var(--secondary-text-color); --mdc-icon-size: 18px; cursor: default; }
+      .minp .lbl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+      .minp .lbl span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .stepper { display: inline-flex; align-items: center; border: 1px solid var(--sm-border, var(--divider-color)); border-radius: 18px; overflow: hidden; }
+      .stepper button { all: unset; cursor: pointer; width: 32px; height: 30px; display: grid; place-items: center; color: var(--primary-text-color); font-size: 18px; }
+      .stepper button:hover:not([disabled]) { background: var(--secondary-background-color); }
+      .stepper button[disabled] { opacity: 0.35; cursor: default; }
+      .stepper .val { min-width: 92px; text-align: center; color: var(--primary-text-color); font-variant-numeric: tabular-nums; font-weight: 500; }
+      .stepper .val.off { color: var(--secondary-text-color); font-weight: 400; }
     `,
   ];
 
@@ -69,6 +81,62 @@ export class SmLoadCard extends LitElement {
     if (l.type === "ev" && lv.plugged === false) return t("reason.not_connected");
     if (l.type === "ev" && lv.is_on && lv.current_a != null) return `${t("hint.charging_at")} ${Math.round(lv.current_a)} A`;
     return null;
+  }
+
+  private _wpa(): number {
+    return 230 * (this.load.ev_phases ?? 1);
+  }
+
+  /** Current minimum in amps (0 = off), from the pending click or the saved watts. */
+  private _curAmps(): number {
+    if (this._minAmps !== null) return this._minAmps;
+    const w = this.load.ev_min_power_w;
+    if (!w) return 0;
+    const min = this.load.ev_min_current ?? 6;
+    const max = this.load.ev_max_current ?? 16;
+    return Math.max(min, Math.min(max, Math.ceil(w / this._wpa() - 1e-9)));
+  }
+
+  private _step(e: Event, dir: number) {
+    e.stopPropagation();
+    const min = this.load.ev_min_current ?? 6;
+    const max = this.load.ev_max_current ?? 16;
+    const cur = this._curAmps();
+    let next = cur + dir;
+    if (dir > 0 && cur === 0) next = min;
+    if (dir < 0 && cur <= min) next = 0;
+    next = Math.min(max, Math.max(0, next));
+    if (next === cur) return;
+    this._minAmps = next;
+    window.clearTimeout(this._minTimer);
+    this._minTimer = window.setTimeout(() => {
+      const amps = this._minAmps ?? 0;
+      this.dispatchEvent(new CustomEvent("set-min-power", {
+        detail: { id: this.load.id, power_w: amps ? amps * this._wpa() : null }, bubbles: true, composed: true,
+      }));
+    }, 700);
+  }
+
+  protected updated(changed: Map<string, unknown>) {
+    // Once the saved value catches up with the pending click, drop the local copy.
+    if (changed.has("load") && this._minAmps !== null) {
+      const w = this.load.ev_min_power_w;
+      if ((w ? Math.round(w / this._wpa()) : 0) === this._minAmps) this._minAmps = null;
+    }
+  }
+
+  private _minPowerRow() {
+    const amps = this._curAmps();
+    const max = this.load.ev_max_current ?? 16;
+    const kw = (amps * this._wpa()) / 1000;
+    return html`<div class="minp" @click=${(e: Event) => e.stopPropagation()} title=${t("card.min_power_help")}>
+      <span class="lbl"><ha-icon icon="mdi:speedometer-slow"></ha-icon><span>${t("f.ev_min_power_w")}</span></span>
+      <span class="stepper">
+        <button ?disabled=${amps === 0} @click=${(e: Event) => this._step(e, -1)} aria-label="-">−</button>
+        <span class="val ${amps ? "" : "off"}">${amps ? `${kw.toLocaleString(undefined, { maximumFractionDigits: 1 })} kW · ${amps} A` : t("card.min_power_off")}</span>
+        <button ?disabled=${amps >= max} @click=${(e: Event) => this._step(e, 1)} aria-label="+">+</button>
+      </span>
+    </div>`;
   }
 
   render() {
@@ -114,7 +182,9 @@ export class SmLoadCard extends LitElement {
       <div class="foot"><div class="seg-wrap">
         <sm-segmented .options=${modeOptions()} .value=${l.mode}
           @value-changed=${(e: CustomEvent) => this.dispatchEvent(new CustomEvent("set-mode", { detail: { id: l.id, mode: e.detail.value as Mode }, bubbles: true, composed: true }))}></sm-segmented>
-      </div></div>
+      </div>
+      ${l.type === "ev" && l.mode === "solar" ? this._minPowerRow() : nothing}
+      </div>
     </div>`;
   }
 }

@@ -71,7 +71,14 @@ async def test_full_flow(hass: HomeAssistant, hass_ws_client) -> None:
         assert res["success"]
         assert "summary" in res["result"]
 
-        await client.send_json({"id": 13, "type": "solarmind/loads/delete", "load_id": ids[1]})
+        await client.send_json({"id": 14, "type": "solarmind/loads/set_ev_min_power", "load_id": ids[0], "power_w": 2070})
+        assert (await client.receive_json())["success"]
+        assert coordinator.store.get_load(ids[0])["ev_min_power_w"] == 2070
+        await client.send_json({"id": 15, "type": "solarmind/loads/set_ev_min_power", "load_id": ids[0], "power_w": None})
+        assert (await client.receive_json())["success"]
+        assert coordinator.store.get_load(ids[0])["ev_min_power_w"] is None
+
+        await client.send_json({"id": 16, "type": "solarmind/loads/delete", "load_id": ids[1]})
         assert (await client.receive_json())["result"]["deleted"]
         await hass.async_block_till_done()
         assert len(hass.states.async_all("select")) == 1

@@ -1,6 +1,6 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { getAnalytics, getConfig, reorderLoads, saveLoad, setMode, subscribeLive } from "./api";
+import { getAnalytics, getConfig, reorderLoads, saveLoad, setEvMinPower, setMode, subscribeLive } from "./api";
 import { setLanguage, t } from "./i18n";
 import { cardStyles, tokens } from "./styles/tokens";
 import type { ConfigPayload, Hass, Live, Mode } from "./types";
@@ -161,6 +161,14 @@ export class SolarMindPanel extends LitElement {
     this._flashSave("saved");
   }
 
+  private async _setMinPower(id: string, power_w: number | null) {
+    const c = this._config!;
+    this._config = { ...c, loads: c.loads.map((l) => (l.id === id ? { ...l, ev_min_power_w: power_w } : l)) };
+    this._flashSave("saving");
+    await setEvMinPower(this.hass, id, power_w);
+    this._flashSave("saved");
+  }
+
   private async _moveLoad(id: string, delta: number) {
     const order = this._config!.loads.map((l) => l.id);
     const i = order.indexOf(id);
@@ -257,6 +265,7 @@ export class SolarMindPanel extends LitElement {
       return html`<sm-load-detail .hass=${this.hass} .load=${load} .live=${this._live?.loads?.[load.id]} .spark=${this._spark[load.id] ?? []}
         .priority=${idx + 1} .count=${c.loads.length}
         @set-mode=${(e: CustomEvent) => this._setMode(e.detail.id, e.detail.mode)}
+        @set-min-power=${(e: CustomEvent) => this._setMinPower(e.detail.id, e.detail.power_w)}
         @move-load=${(e: CustomEvent) => this._moveLoad(e.detail.id, e.detail.delta)}
         @open-analytics=${(e: CustomEvent) => { this._analyticsLoad = e.detail.id; this._detail = null; this._tab = "analytics"; }}
         @load-saved=${async (e: CustomEvent) => {
@@ -279,6 +288,7 @@ export class SolarMindPanel extends LitElement {
         return html`<sm-dashboard .hass=${this.hass} .loads=${c.loads} .live=${this._live} .spark=${this._spark} .editing=${this._editing}
           @open-load=${(e: CustomEvent) => (this._detail = e.detail.id)}
           @set-mode=${(e: CustomEvent) => this._setMode(e.detail.id, e.detail.mode)}
+        @set-min-power=${(e: CustomEvent) => this._setMinPower(e.detail.id, e.detail.power_w)}
           @loads-reordered=${(e: CustomEvent) => this._setOrder(e.detail.order)}
           @add-load=${this._startAdd}></sm-dashboard>`;
     }

@@ -84,6 +84,12 @@ class SolarMindStore:
         self.loads = new
         await self.async_save()
 
+    async def async_set_ev_min_power(self, load_id: str, power_w: float | None) -> None:
+        load = self.get_load(load_id)
+        if load:
+            load["ev_min_power_w"] = power_w if power_w and power_w > 0 else None
+            await self.async_save()
+
     async def async_set_mode(self, load_id: str, mode: str) -> None:
         load = self.get_load(load_id)
         if load and mode in MODES:
