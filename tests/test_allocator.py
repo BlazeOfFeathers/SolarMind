@@ -234,3 +234,36 @@ def test_disabled_and_unavailable_are_left_alone():
     loads = [boiler("b1", enabled=False), boiler("b2")]
     d, _ = run(-5000, loads, {"b1": LoadState(), "b2": LoadState(available=False)})
     assert d["b1"].on is None and d["b2"].on is None
+
+
+def test_ev_min_power_tops_up_from_grid():
+    from custom_components.solarmind.const import R_MIN_POWER
+
+    car = ev(ev_min_power_w=2000)
+    # 500 W surplus only: plain solar would stop, the minimum keeps 9 A (2070 W).
+    d, _ = run(-500, [car], {"ev": LoadState(is_on=False, soc=50)})
+    d = d["ev"]
+    assert d.on is True and d.current_a == 9 and d.reason == R_MIN_POWER and d.wants_grid
+
+
+def test_ev_min_power_lets_surplus_go_higher():
+    car = ev(ev_min_power_w=2000)
+    d, _ = run(-3500, [car], {"ev": LoadState(is_on=False, soc=50)})
+    d = d["ev"]
+    assert d.reason == R_SOLAR and d.current_a == 14
+
+
+def test_ev_min_power_stops_at_target_soc():
+    car = ev(ev_min_power_w=2000, ev_target_soc=80)
+    d, _ = run(0, [car], {"ev": LoadState(is_on=False, soc=85)})
+    assert d["ev"].on is False and d["ev"].reason == R_NO_SURPLUS
+
+
+def test_ev_min_power_respects_peak_guard():
+    car = ev(ev_min_power_w=2000)
+    # House imports 800 W, budget 2500 W -> 1700 W headroom -> 7 A.
+    d, _ = run(800, [car], {"ev": LoadState(is_on=False, soc=50)}, grid_budget_w=2500)
+    d = d["ev"]
+    assert d.on is True and d.current_a == 7 and d.reason == R_PEAK
+    d, _ = run(1500, [car], {"ev": LoadState(is_on=False, soc=50)}, grid_budget_w=2500)
+    assert d["ev"].on is False and d["ev"].reason == R_PEAK
