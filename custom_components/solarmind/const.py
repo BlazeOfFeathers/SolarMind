@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.2.6"
+VERSION = "0.2.7"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
