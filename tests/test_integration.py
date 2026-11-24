@@ -84,3 +84,13 @@ async def test_full_flow(hass: HomeAssistant, hass_ws_client) -> None:
         assert len(hass.states.async_all("select")) == 1
         async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=30))
         await hass.async_block_till_done()
+
+
+def test_versions_match():
+    import json
+    from pathlib import Path
+
+    from custom_components.solarmind.const import VERSION
+
+    manifest = json.loads((Path(__file__).parents[1] / "custom_components/solarmind/manifest.json").read_text())
+    assert manifest["version"] == VERSION

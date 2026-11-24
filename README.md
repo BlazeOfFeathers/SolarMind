@@ -53,6 +53,8 @@ pytest -q
 cd frontend && npm install && npm run build   # bouwt custom_components/solarmind/frontend/solarmind-panel.js
 ```
 
+**Nieuwe versie uitbrengen:** verhoog `version` in `manifest.json` en `VERSION` in `const.py`, en merge naar `main`. De workflow *Release* maakt dan automatisch de tag en GitHub-release `vX.Y.Z`, en HACS biedt de update aan.
+
 ## Op de planning
 
 - Dynamische tarieven (ENTSO-E / Nordpool): nachtaanvulling in de goedkoopste uren, alles aan bij negatieve prijzen.
