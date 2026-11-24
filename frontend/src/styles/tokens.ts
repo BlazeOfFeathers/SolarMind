@@ -155,6 +155,21 @@ export const fmtDur = (s: number | null | undefined): string => {
   const m = Math.round((s % 3600) / 60);
   return h ? `${h} u ${m} min` : `${m} min`;
 };
+/** Short duration for an ETA: "7 u 10" or "45 min". */
+export const fmtEta = (s: number): string => {
+  const mins = Math.max(1, Math.round(s / 60));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} u ${String(m).padStart(2, "0")}` : `${h} u`;
+};
+/** Clock time `s` seconds from now: "17:55", with a weekday when it is not today. */
+export const fmtClockIn = (s: number): string => {
+  const at = new Date(Date.now() + s * 1000);
+  const hm = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  if (at.toDateString() === new Date().toDateString()) return hm;
+  return `${at.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+};
 export const fmtEur = (v: number | null | undefined): string =>
   v === null || v === undefined ? "–" : `€ ${v.toFixed(2)}`;
 export const fmtSec = (s: number | null | undefined): string => {

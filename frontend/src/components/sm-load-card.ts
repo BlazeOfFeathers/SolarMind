@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { t } from "../i18n";
-import { cardStyles, fmtKwh, splitW, tokens } from "../styles/tokens";
+import { cardStyles, fmtClockIn, fmtEta, fmtKwh, splitW, tokens } from "../styles/tokens";
 import type { LiveLoad, Load, Mode } from "../types";
 import "./shared/sm-segmented";
 import "./shared/sm-sparkline";
@@ -44,6 +44,10 @@ export class SmLoadCard extends LitElement {
       .big { display: flex; align-items: flex-start; gap: 4px; }
       .big .v { font-size: 48px; font-weight: 300; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
       .big .u { font-size: 18px; color: var(--secondary-text-color); margin-top: 6px; }
+      .eta { color: var(--primary-text-color); }
+      .eta.est { color: var(--secondary-text-color); }
+      .limit { font-size: 12px; color: var(--secondary-text-color); margin-top: 4px; }
+      .extra { flex-wrap: wrap; row-gap: 2px; }
       .extra { display: flex; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--secondary-text-color); --mdc-icon-size: 14px; }
       .extra span { display: inline-flex; align-items: center; gap: 3px; }
       .side { margin-left: auto; text-align: end; }
@@ -81,6 +85,22 @@ export class SmLoadCard extends LitElement {
     if (l.type === "ev" && lv.plugged === false) return t("reason.not_connected");
     if (l.type === "ev" && lv.is_on && lv.current_a != null) return `${t("hint.charging_at")} ${Math.round(lv.current_a)} A`;
     return null;
+  }
+
+  private _eta() {
+    const lv = this.live;
+    if (this.load.type !== "ev" || !lv || lv.eta_full_s == null || !lv.eta_full_s || lv.plugged === false) return nothing;
+    const est = !!lv.eta_estimated;
+    const d = `${est ? "~" : ""}${fmtEta(lv.eta_full_s)}`;
+    const tail = est ? ` ${t("eta.at_min")}` : ` (± ${fmtClockIn(lv.eta_full_s)})`;
+    return html`<span class="eta ${est ? "est" : ""}"><ha-icon icon="mdi:timer-sand"></ha-icon>${t("eta.full").replace("{d}", d)}${tail}</span>`;
+  }
+
+  private _limitLine() {
+    const lv = this.live;
+    if (this.load.type !== "ev" || !lv || lv.eta_limit_s == null || lv.charge_limit == null || lv.plugged === false) return nothing;
+    const when = `${lv.eta_estimated ? "~" : ""}${fmtClockIn(lv.eta_limit_s)}`;
+    return html`<div class="limit">${t("eta.limit").replace("{soc}", String(Math.round(lv.charge_limit))).replace("{t}", when)}</div>`;
   }
 
   private _wpa(): number {
@@ -166,8 +186,10 @@ export class SmLoadCard extends LitElement {
             <span class="prio">#${this.priority}</span>
             ${lv?.temperature != null ? html`<span><ha-icon icon="mdi:thermometer"></ha-icon>${lv.temperature.toFixed(1)} °C</span>` : nothing}
             ${lv?.soc != null ? html`<span><ha-icon icon="mdi:battery-charging"></ha-icon>${Math.round(lv.soc)}%</span>` : nothing}
+            ${this._eta()}
             ${!l.enabled ? html`<span>${t("reason.disabled")}</span>` : nothing}
           </div>
+          ${this._limitLine()}
         </div>
         <div class="side">
           <div class="l">${t("load.today")}</div>

@@ -132,6 +132,7 @@ class EvEntitiesDriver(BaseDriver):
             current_a=read_float(self.hass, self.cfg.get("ev_current_entity")),
             soc=read_float(self.hass, self.cfg.get("ev_soc_entity")),
             plugged=read_bool(self.hass, self.cfg.get("ev_plugged_entity")),
+            charge_limit=read_float(self.hass, self.cfg.get("ev_charge_limit_entity")),
         )
 
     async def async_apply(self, st: LoadState, dec: Decision) -> bool:
@@ -231,6 +232,7 @@ class TeslaBleProxyDriver(BaseDriver):
             current_a=cs.get("charge_current_request", cs.get("charge_amps")),
             soc=None if soc is None else float(soc),
             plugged=plugged,
+            charge_limit=_float_or_none(cs.get("charge_limit_soc")),
         )
 
     async def async_apply(self, st: LoadState, dec: Decision) -> bool:
@@ -250,6 +252,13 @@ class TeslaBleProxyDriver(BaseDriver):
                     self._charge_state["charging_state"] = "Charging" if dec.on else "Stopped"
             self._last_poll = 0.0  # re-read soon
         return changed
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _find_key(data: Any, key: str) -> Any:

@@ -8,11 +8,11 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, REASONS
+from .const import DOMAIN, LOAD_EV, REASONS
 from .entity import SolarMindEntity, SolarMindLoadEntity
 
 
@@ -50,6 +50,15 @@ LOAD_SENSORS = [
     SMSensorDescription(key="status", device_class=SensorDeviceClass.ENUM, options=REASONS, value=lambda d: d.get("reason")),
 ]
 
+EV_SENSORS = [
+    SMSensorDescription(key="time_to_full", device_class=SensorDeviceClass.DURATION, native_unit_of_measurement=UnitOfTime.MINUTES,
+                        suggested_display_precision=0,
+                        value=lambda d: None if d.get("eta_full_s") is None or d.get("eta_estimated") else round(d["eta_full_s"] / 60)),
+    SMSensorDescription(key="time_to_limit", device_class=SensorDeviceClass.DURATION, native_unit_of_measurement=UnitOfTime.MINUTES,
+                        suggested_display_precision=0,
+                        value=lambda d: None if d.get("eta_limit_s") is None or d.get("eta_estimated") else round(d["eta_limit_s"] / 60)),
+]
+
 
 def _pct(house: dict[str, Any], key: str) -> float | None:
     pv = house.get("pv_kwh", 0.0)
@@ -63,6 +72,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities: list[SensorEntity] = [SiteSensor(coordinator, d) for d in SITE_SENSORS]
     for load in coordinator.store.loads:
         entities += [LoadSensor(coordinator, load, d) for d in LOAD_SENSORS]
+        if load["type"] == LOAD_EV:
+            entities += [LoadSensor(coordinator, load, d) for d in EV_SENSORS]
     async_add_entities(entities)
 
 

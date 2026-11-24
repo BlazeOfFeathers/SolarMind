@@ -60,6 +60,7 @@ class LoadState:
     soc: float | None = None
     temperature: float | None = None
     plugged: bool | None = None  # EV cable connected (None = unknown, assume yes)
+    charge_limit: float | None = None  # EV charge limit set in the car (%)
 
 
 @dataclass

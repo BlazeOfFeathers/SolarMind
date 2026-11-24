@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
@@ -147,6 +147,8 @@ DEFAULT_LOAD: dict = {
     "ev_max_current": 16,
     "ev_min_soc": None,  # charge from grid immediately below this SoC
     "ev_target_soc": 80,  # night fallback target
+    "ev_battery_kwh": None,  # usable battery size; None = learn it from sessions
+    "ev_charge_limit_entity": None,  # entities driver: the car's charge limit (%)
     "ev_min_power_w": None,  # Solar mode: always charge at least this, topped up from the grid
     "ev_current_step_interval_s": 30,
 }

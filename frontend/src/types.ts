@@ -41,6 +41,13 @@ export interface LiveLoad {
   kwh_today?: number;
   solar_kwh_today?: number;
   runtime_today_s?: number;
+  // EV only
+  battery_kwh?: number | null;
+  battery_kwh_learned?: number | null;
+  charge_limit?: number | null;
+  eta_full_s?: number | null;
+  eta_limit_s?: number | null;
+  eta_estimated?: boolean;
 }
 
 export interface Live {

@@ -31,6 +31,7 @@ from .control.allocator import (
     allocate,
     evaluate_night_need,
 )
+from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, time_to_soc_s
 from .control.peak import PeakTracker, month_key_of
 from .drivers import BaseDriver, make_driver, read_float
 from .history import HistoryData, LoadSample
@@ -77,6 +78,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_prune_day = ""
         self.live: dict[str, Any] = {"site": {}, "loads": {}}
         self._listeners_ws: set[Any] = set()
+        self._ev_power: dict[str, PowerAverager] = {}
+        self._ev_capacity: dict[str, CapacityLearner] = {}
 
     async def async_setup(self) -> None:
         self.history = HistoryData(await self._history_store.async_load())
@@ -85,6 +88,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for lid, data in rt.get("loads", {}).items():
             self.runtimes[lid] = LoadRuntime.from_dict(data)
         self._was_night = rt.get("was_night")
+        for lid, data in rt.get("ev_capacity", {}).items():
+            self._ev_capacity[lid] = CapacityLearner.from_dict(data)
         self.rebuild_drivers()
 
     def rebuild_drivers(self) -> None:
@@ -245,6 +250,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "night_kwh": round(rt.night_kwh, 3),
                 "last_hot_ts": rt.last_hot_ts or None,
             }
+            if cfg["type"] == LOAD_EV:
+                loads_live[cfg["id"]].update(self._ev_eta(cfg, st, p, now, dt_s, voltage))
         if grid is not None and dt_s > 0:
             self.history.record(local, dt_s, pv, grid, samples)
 
@@ -291,11 +298,51 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._notify_ws()
         return self.live
 
+    def _ev_eta(self, cfg: dict[str, Any], st: LoadState, power_w: float, now: float, dt_s: float, voltage: float) -> dict[str, Any]:
+        """Time to 100 % (and to the car's charge limit) at the current charging power."""
+        lid = cfg["id"]
+        avg = self._ev_power.setdefault(lid, PowerAverager())
+        learner = self._ev_capacity.setdefault(lid, CapacityLearner())
+        charging = st.available and st.is_on and power_w >= MIN_CHARGING_W
+        if charging:
+            avg.add(now, power_w)
+        else:
+            avg.reset()
+        if st.available:
+            learner.update(st.soc, st.plugged, power_w * dt_s / 3.6e6 if charging else 0.0)
+        capacity = cfg.get("ev_battery_kwh") or learner.learned_kwh
+        out: dict[str, Any] = {
+            "battery_kwh": round(capacity, 1) if capacity else None,
+            "battery_kwh_learned": round(learner.learned_kwh, 1) if learner.learned_kwh else None,
+            "charge_limit": st.charge_limit,
+            "eta_full_s": None,
+            "eta_limit_s": None,
+            "eta_estimated": False,
+        }
+        if not st.available or st.soc is None or not capacity or st.plugged is False:
+            return out
+        power = avg.average() if charging else None
+        if power is None:
+            # Paused: estimate at the minimum the car would charge with.
+            wpa = voltage * max(1, int(cfg.get("ev_phases", 1)))
+            min_w = cfg.get("ev_min_power_w") if cfg.get("mode") == "solar" else None
+            power = max(float(min_w or 0), cfg.get("ev_min_current", 6) * wpa)
+            out["eta_estimated"] = True
+        full = time_to_soc_s(st.soc, 100.0, capacity, power)
+        out["eta_full_s"] = None if full is None else round(full)
+        if st.charge_limit is not None and st.soc < st.charge_limit < 100:
+            lim = time_to_soc_s(st.soc, st.charge_limit, capacity, power)
+            out["eta_limit_s"] = None if lim is None else round(lim)
+        return out
+
     def _persist_runtime(self) -> None:
         self.store.runtime = {
             "peak": self.peak.to_dict(),
             "was_night": self._was_night,
             "loads": {lid: rt.to_dict() for lid, rt in self.runtimes.items()},
+            "ev_capacity": {
+                lid: c.to_dict() for lid, c in self._ev_capacity.items() if self.store.get_load(lid) is not None
+            },
         }
 
     # --------------------------------------------------- websocket live feed

@@ -19,7 +19,7 @@ const isTesla = (l: Record<string, any>) => isEv(l) && l.ev_driver === "tesla_bl
 interface RowSpec {
   icon: string;
   title: string;
-  secondary?: (l: Load) => string;
+  secondary?: (l: Load, lv?: LiveLoad) => string;
   value?: (l: Load, lv?: LiveLoad) => string;
   fields?: FieldSpec[];
   toggle?: string;
@@ -148,7 +148,10 @@ export class SmLoadDetail extends LitElement {
             icon: "mdi:battery-charging", title: t("f.ev_soc_entity"), show: isEv,
             secondary: (l) => (l.ev_soc_entity ? entityName(h, l.ev_soc_entity) : isTesla(l) ? t("detail.from_proxy") : t("detail.not_set")),
             value: (l, lv) => (lv?.soc != null ? `${Math.round(lv.soc)}%` : ""),
-            fields: [{ key: "ev_soc_entity", kind: "entity", domains: ["sensor"] }],
+            fields: [
+              { key: "ev_soc_entity", kind: "entity", domains: ["sensor"] },
+              { key: "ev_charge_limit_entity", kind: "entity", domains: ["sensor", "number", "input_number"], show: (l) => !isTesla(l) },
+            ],
           },
         ],
       },
@@ -166,6 +169,12 @@ export class SmLoadDetail extends LitElement {
               { key: "ev_max_current", kind: "number", unit: "A" },
               { key: "ev_current_step_interval_s", kind: "number", unit: "s" },
             ],
+          },
+          {
+            icon: "mdi:car-battery", title: t("f.ev_battery_kwh"),
+            secondary: (_l: Load, lv?: LiveLoad) => (lv?.battery_kwh_learned ? t("detail.battery_learned").replace("{kwh}", `${lv.battery_kwh_learned} kWh`) : t("detail.battery_learning")),
+            value: (l, lv) => (l.ev_battery_kwh ? `${l.ev_battery_kwh} kWh` : lv?.battery_kwh_learned ? `${lv.battery_kwh_learned} kWh (${t("detail.learned")})` : "–"),
+            fields: [{ key: "ev_battery_kwh", kind: "number", nullable: true, unit: "kWh" }],
           },
           {
             icon: "mdi:battery-alert-variant-outline", title: t("f.ev_min_soc"), secondary: () => t("detail.min_soc_help"),
@@ -350,10 +359,10 @@ export class SmLoadDetail extends LitElement {
       <div class="card-head"><h2>${s.title}</h2>${s.meta && s.meta(l) ? html`<span class="meta">${s.meta(l)}</span>` : nothing}</div>
       ${rows.map((r) =>
         r.toggle
-          ? html`<sm-list-row .icon=${r.icon} .heading=${r.title} .secondary=${r.secondary?.(l) ?? ""}>
+          ? html`<sm-list-row .icon=${r.icon} .heading=${r.title} .secondary=${r.secondary?.(l, this.live) ?? ""}>
               <sm-toggle .checked=${!!l[r.toggle]} @change=${(e: CustomEvent) => this._save({ [r.toggle!]: e.detail.checked })}></sm-toggle>
             </sm-list-row>`
-          : html`<sm-list-row .icon=${r.icon} .heading=${r.title} .secondary=${r.secondary?.(l) ?? ""} .value=${r.value?.(l, this.live) ?? ""}
+          : html`<sm-list-row .icon=${r.icon} .heading=${r.title} .secondary=${r.secondary?.(l, this.live) ?? ""} .value=${r.value?.(l, this.live) ?? ""}
               clickable @row-click=${() => this._openDialog(r.title, r.fields ?? [])}></sm-list-row>`,
       )}
     </div>`;
