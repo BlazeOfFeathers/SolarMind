@@ -110,7 +110,7 @@ export class SmForm extends LitElement {
             }} />${f.unit ? html`<span class="unit">${f.unit}</span>` : nothing}</span>
           ${f.helper ? html`<span class="help">${f.helper}</span>` : nothing}</label>`;
       case "multi": {
-        const sel: string[] = Array.isArray(v) ? v : [];
+        const sel: string[] = Array.isArray(v) ? v.map(String) : [];
         const opts = f.options ?? [];
         return html`<div class="field multi"><span>${label}</span>
           ${opts.length

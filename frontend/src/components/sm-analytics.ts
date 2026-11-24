@@ -7,6 +7,7 @@ import type { Hass, Load } from "../types";
 import { LOAD_COLORS, defaultIcon, reasonTone } from "./common";
 import type { Bar, BandSeg, Panel, Series } from "./sm-chart";
 import "./sm-chart";
+import "./sm-plan";
 import "./shared/sm-segmented";
 
 type Range = "today" | "yesterday" | "7d" | "30d" | "month";
@@ -313,6 +314,7 @@ export class SmAnalytics extends LitElement {
         <sm-segmented class="range" size="sm" .options=${ranges.map((r) => ({ value: r, label: t(`a.range.${r}`) }))} .value=${this._range}
           @value-changed=${(e: CustomEvent) => { this._range = e.detail.value; this._fetch(); }}></sm-segmented>
       </div>
+      <sm-plan .hass=${this.hass} .loads=${this.loads} .loadId=${this.loadId}></sm-plan>
       <div class="card"><div class="card-head"><h2>${t("a.summary")}</h2>${this._loading ? html`<span class="meta">…</span>` : nothing}</div>${this._summary()}</div>
       <div class="card"><div class="card-head"><h2>${t("a.timeline")}</h2></div><div class="card-body">${this._history()}</div></div>
       ${this._sessions()}

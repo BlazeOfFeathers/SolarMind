@@ -180,3 +180,33 @@ async def test_logs_ws(hass: HomeAssistant, hass_ws_client) -> None:
 
     await client.send_json({"id": 4, "type": "solarmind/logs/clear"})
     assert (await client.receive_json())["result"]["entries"] == []
+
+
+async def test_planner_runs_and_serves_the_plan(hass: HomeAssistant, hass_ws_client) -> None:
+    await async_setup_component(hass, "http", {})
+    await async_setup_component(hass, "websocket_api", {})
+    hass.config.components.add("frontend")
+    start = dt_util.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    hass.states.async_set("sensor.solcast_today", "20", {"detailedForecast": [
+        {"period_start": (start + timedelta(minutes=30 * i)).isoformat(), "pv_estimate": 3.0} for i in range(8)
+    ]})
+    with patch("custom_components.solarmind._async_register_panel"):
+        entry = await _setup(hass)
+        client = await hass_ws_client(hass)
+        await client.send_json({"id": 1, "type": "solarmind/settings/save", "settings": {
+            "grid_power_entity": "sensor.grid", "plan_enabled": True, "pv_forecast_today_entity": "sensor.solcast_today",
+        }})
+        assert (await client.receive_json())["success"]
+        await client.send_json({"id": 2, "type": "solarmind/loads/save", "load": {
+            "name": "Boiler", "switch_entity": "switch.boiler1", "mode": "solar_night", "plan_need_kwh": 3.0}})
+        load_id = (await client.receive_json())["result"]["load"]["id"]
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        await client.send_json({"id": 3, "type": "solarmind/plan"})
+        res = (await client.receive_json())["result"]
+        assert res["enabled"] is True
+        assert res["plan"]["loads"][load_id]["need_kwh"] == 3.0
+        assert len(res["plan"]["slots"]) == 36 * 4
+        assert res["info"]["pv_source"].startswith("detailed")
+        assert coordinator.live["site"]["plan"]["loads"][load_id]["grid_planned"] is True

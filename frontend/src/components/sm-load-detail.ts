@@ -184,6 +184,8 @@ export class SmLoadDetail extends LitElement {
             fields: [
               { key: "temperature_entity", kind: "entity", domains: ["sensor"] },
               { key: "max_temperature", kind: "number", nullable: true, unit: "°C" },
+              { key: "boiler_volume_l", kind: "number", unit: "l", step: 10, helper: t("f.boiler_volume_l.help"), show: (d) => !!d.temperature_entity },
+              { key: "boiler_target_temperature", kind: "number", nullable: true, unit: "°C", helper: t("f.boiler_target_temperature.help"), show: (d) => !!d.temperature_entity },
             ],
           },
           {
@@ -330,6 +332,49 @@ export class SmLoadDetail extends LitElement {
             icon: "mdi:weather-sunny-alert", title: t("detail.forecast_skip"), secondary: () => t("detail.forecast_skip_help"),
             value: (l) => (l.night_skip_forecast_kwh ? `> ${l.night_skip_forecast_kwh} kWh` : t("detail.off")),
             fields: [{ key: "night_skip_forecast_kwh", kind: "number", unit: "kWh", nullable: true, step: 0.5 }],
+          },
+        ],
+      },
+      {
+        title: t("f.section.plan"),
+        show: notBat,
+        meta: () => (this.live?.plan ? "" : t("detail.plan_inactive")),
+        rows: [
+          {
+            icon: "mdi:water-thermometer-outline", title: t("detail.plan_need"), show: isSwitch,
+            secondary: (l, lv) =>
+              l.temperature_entity ? t("detail.plan_need_temp")
+              : l.plan_need_kwh ? t("detail.plan_need_set")
+              : lv?.need_learned_kwh ? t("detail.plan_need_learned").replace("{kwh}", fmtKwh(lv.need_learned_kwh, 1))
+              : t("detail.plan_need_learning"),
+            value: (l, lv) => (l.plan_need_kwh ? fmtKwh(l.plan_need_kwh, 1) : lv?.need_learned_kwh ? fmtKwh(lv.need_learned_kwh, 1) : ""),
+            fields: [{ key: "plan_need_kwh", kind: "number", nullable: true, unit: "kWh", step: 0.1, helper: t("f.plan_need_kwh.help") }],
+          },
+          { icon: "mdi:car-clock", title: t("f.ev_departure_enabled"), secondary: () => t("detail.departure_help"), toggle: "ev_departure_enabled", show: isEv },
+          {
+            icon: "mdi:clock-outline", title: t("detail.departure"), show: (l) => isEv(l) && !!l.ev_departure_enabled,
+            value: (l) => `${l.ev_departure_time} · ${l.ev_departure_soc}%`,
+            secondary: (l) => {
+              const days: number[] = (l.ev_departure_days ?? []).map(Number);
+              return days.length === 7 ? t("detail.every_day") : days.sort().map((d) => t(`day.${d}`)).join(", ");
+            },
+            fields: [
+              { key: "ev_departure_time", kind: "time" },
+              { key: "ev_departure_soc", kind: "number", unit: "%", step: 5 },
+              { key: "ev_departure_days", kind: "multi", options: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ value: String(d), label: t(`day.${d}`) })) },
+            ],
+          },
+          {
+            icon: "mdi:calendar-check-outline", title: t("detail.plan_now"), show: () => !!this.live?.plan,
+            secondary: () => {
+              const p = this.live?.plan;
+              if (!p) return "";
+              const at = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              const base = t("detail.plan_now_sub").replace("{need}", fmtKwh(p.need_kwh, 1)).replace("{sun}", fmtKwh(p.solar_kwh, 1));
+              return p.grid_kwh > 0.01
+                ? `${base} · ${t("plan.grid_at").replace("{kwh}", fmtKwh(p.grid_kwh, 1)).replace("{from}", at(p.grid_from)).replace("{to}", at(p.grid_to))}`
+                : base;
+            },
           },
         ],
       },

@@ -39,6 +39,7 @@ from .control.peak import PeakTracker, month_key_of
 from .drivers import BaseDriver, make_driver, read_float
 from .history import HistoryData, LoadSample
 from .notifier import NotificationTracker, async_send, notify_targets
+from .planning import PlanningEngine
 from .store import SolarMindStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.notifier = NotificationTracker(lang="nl" if str(hass.config.language).startswith("nl") else "en")
         self._ev_power: dict[str, PowerAverager] = {}
         self._ev_capacity: dict[str, CapacityLearner] = {}
+        self.planning = PlanningEngine(hass)
 
     async def async_setup(self) -> None:
         self.history = HistoryData(await self._history_store.async_load())
@@ -121,6 +123,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._was_night = rt.get("was_night")
         for lid, data in rt.get("ev_capacity", {}).items():
             self._ev_capacity[lid] = CapacityLearner.from_dict(data)
+        self.planning.load(rt.get("planning"))
         self.rebuild_drivers()
 
     def rebuild_drivers(self) -> None:
@@ -140,6 +143,11 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._persist_runtime()
         await self.store.async_save()
         await self._history_store.async_save(self.history.to_dict())
+
+    async def async_request_refresh(self) -> None:
+        """Settings, loads or modes changed: plan again on the next cycle."""
+        self.planning.dirty = True
+        await super().async_request_refresh()
 
     def remove_load_history(self, load_id: str) -> None:
         self.history.remove_load(load_id)
@@ -197,12 +205,13 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             forecast_tomorrow_kwh=forecast_tomorrow,
             voltage=voltage,
         )
+        day_ended = not is_night and self._was_night is True
         if is_night and self._was_night is not True:
             for cfg in loads:
                 rt = self.runtimes.setdefault(cfg["id"], LoadRuntime())
                 rt.night_kwh = 0.0
                 rt.night_needed = evaluate_night_need(cfg, states[cfg["id"]], rt, site)
-        elif not is_night and self._was_night is True:
+        elif day_ended:
             for cfg in loads:
                 rt = self.runtimes.setdefault(cfg["id"], LoadRuntime())
                 rt.solar_kwh_day = 0.0
@@ -243,7 +252,12 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self.plan = make_plan(settings, loads, states, self.runtimes, remaining, is_night, self.plan)
             site.ev_floor_paused = self.plan.ev_floor_paused
-            result = allocate(site, apply_order(loads, self.plan), states, self.runtimes)
+            order = apply_order(loads, self.plan)
+            self._update_planning(now, local, settings, order, states, forecast_tomorrow, house_today, voltage)
+            site.plan_grid_w = self.planning.controls(settings, now)
+            result = allocate(site, order, states, self.runtimes)
+            for dec in result.decisions:
+                self.planning.label(dec, now)
             by_id = {d.load_id: d for d in result.decisions}
             result_decisions = [by_id[cfg["id"]] for cfg in loads]
             base_w, surplus_w, headroom = result.base_w, result.surplus_w, result.grid_headroom_w
@@ -323,12 +337,19 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "car_state": st.car_state,
                 "driver_error": getattr(self.drivers.get(cfg["id"]), "last_error", None),
             }
+            plan = self.planning.plan
+            learner = self.planning.learners.get(cfg["id"])
+            loads_live[cfg["id"]]["plan"] = plan.loads.get(cfg["id"]) if plan else None
+            loads_live[cfg["id"]]["need_learned_kwh"] = (
+                round(learner.learned_kwh, 2) if learner and learner.learned_kwh else None
+            )
             if cfg["type"] == LOAD_EV:
                 loads_live[cfg["id"]].update(self._ev_eta(cfg, st, p, now, dt_s, voltage))
             elif cfg["type"] == LOAD_BATTERY:
                 loads_live[cfg["id"]].update(battery_live(cfg, st, dec))
         if grid is not None and dt_s > 0:
             self.history.record(local, dt_s, pv, grid, samples)
+        self.planning.learn(loads, self.runtimes, powers, dt_s, day_ended)
 
         today = local.strftime("%Y-%m-%d")
         if today != self._last_prune_day:
@@ -362,6 +383,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "month_peak_ts": self.peak.month_peak_ts or None,
                 "forecast_tomorrow_kwh": forecast_tomorrow,
                 "forecast": self.plan.to_dict(),
+                "plan": self._plan_live(),
                 "today": day.get("house", {}),
             },
             "loads": loads_live,
@@ -376,6 +398,42 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._history_store.async_delay_save(self.history.to_dict, HISTORY_SAVE_DELAY)
         self._notify_ws()
         return self.live
+
+    def ev_capacity_kwh(self, cfg: dict[str, Any]) -> float | None:
+        learner = self._ev_capacity.get(cfg["id"])
+        return cfg.get("ev_battery_kwh") or (learner.learned_kwh or learner.guess_kwh if learner else None)
+
+    def _update_planning(
+        self,
+        now: float,
+        local: datetime,
+        settings: dict[str, Any],
+        order: list[dict[str, Any]],
+        states: dict[str, LoadState],
+        forecast_tomorrow: float | None,
+        house_today: dict[str, Any],
+        voltage: float,
+    ) -> None:
+        limit = self.peak.limit_w(settings) if settings.get("peak_guard_enabled", True) else None
+        try:
+            plan = self.planning.update(
+                now, local, settings, order, states, self.runtimes,
+                {c["id"]: self.ev_capacity_kwh(c) for c in order if c["type"] == LOAD_EV},
+                forecast_tomorrow, house_today.get("pv_kwh") if settings.get("pv_power_entity") else None,
+                limit, self.history, voltage,
+            )
+        except Exception:  # noqa: BLE001 - the planner must never stop control
+            _LOGGER.exception("SolarMind: planning failed")
+            self.planning.plan = None
+            return
+        if plan is not None and plan.slots:
+            self.history.add_prediction(plan.slots[0], plan.pv_w[0], plan.base_w[0])
+
+    def _plan_live(self) -> dict[str, Any] | None:
+        plan = self.planning.plan
+        if plan is None:
+            return None
+        return {"created": plan.created, "loads": plan.loads, "pv_source": self.planning.info.get("pv_source")}
 
     def _ev_eta(self, cfg: dict[str, Any], st: LoadState, power_w: float, now: float, dt_s: float, voltage: float) -> dict[str, Any]:
         """Time to 100 % (and to the car's charge limit) at the current charging power."""
@@ -455,6 +513,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "peak": self.peak.to_dict(),
             "was_night": self._was_night,
             "loads": {lid: rt.to_dict() for lid, rt in self.runtimes.items()},
+            "planning": self.planning.to_dict(),
             "ev_capacity": {
                 lid: c.to_dict() for lid, c in self._ev_capacity.items() if self.store.get_load(lid) is not None
             },

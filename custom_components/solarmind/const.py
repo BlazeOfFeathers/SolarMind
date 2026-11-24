@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.2.5"
+VERSION = "0.2.6"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
@@ -68,6 +68,8 @@ R_SELF_CONSUMPTION = "self_consumption"  # battery covers the house
 R_RESERVE = "reserve"  # battery at its minimum SoC
 R_BAT_FULL = "battery_full"
 R_WAIT_SUN = "forecast_wait"  # EV minimum power waits for the forecast sun
+R_PLANNED = "planned"  # planner: grid energy planned in this quarter
+R_PLAN_WAIT = "plan_wait"  # planner: grid energy planned later
 
 REASONS = [
     R_IDLE,
@@ -92,6 +94,8 @@ REASONS = [
     R_RESERVE,
     R_BAT_FULL,
     R_WAIT_SUN,
+    R_PLANNED,
+    R_PLAN_WAIT,
 ]
 
 # Grid sensor sign conventions
@@ -116,6 +120,16 @@ DEFAULT_SETTINGS: dict = {
     "forecast_ev_floor_kwh": 5.0,  # ... at least this much usable sun still expected today
     "forecast_factor_pct": 80,  # count on this share of the forecast (forecasts tend to be optimistic)
     "forecast_house_kwh": 3.0,  # sun the house itself still uses today
+    # Predictive planning (control/planner.py): each part can be switched off on its own.
+    "plan_enabled": False,
+    "plan_boiler_night": True,  # boilers in Sun + night: only top up what the sun did not give
+    "plan_ev": True,  # cars: night charging spread and planned, and the departure time
+    "plan_battery_night": True,  # battery in Sun + night: charge only what tomorrow's sun will not
+    "plan_peak_spread": True,  # spread grid energy over the quarters, under the peak limit
+    "plan_learn_base": True,  # learn the house load per hour from the history
+    "plan_base_w": 300,  # ... else this fixed house load
+    "plan_pv_estimate": "pv_estimate",  # Solcast: pv_estimate | pv_estimate10 (cautious)
+    "plan_horizon_h": 36,
     # Capacity tariff peak guard (Belgium: monthly max of 15-min average import).
     "peak_guard_enabled": True,
     "peak_limit_w": 2500,  # never let the quarter average exceed this (min. billed is 2.5 kW)
@@ -162,6 +176,10 @@ DEFAULT_LOAD: dict = {
     "night_target_kwh": 4.0,  # energy to deliver during the night (0 = until load stops drawing)
     "night_min_temperature": None,  # or: run at night when temperature below this
     "night_skip_forecast_kwh": None,  # skip night run if tomorrow's forecast exceeds this
+    # Planner: boiler need
+    "plan_need_kwh": None,  # daily need; None = learn it (or from the temperature sensor)
+    "boiler_volume_l": 200,  # with a temperature sensor: litres of water
+    "boiler_target_temperature": None,  # ... heated to this (None = max temperature, else 60)
     # Legionella (boilers)
     "legionella_enabled": False,
     "legionella_temperature": 60,
@@ -185,6 +203,11 @@ DEFAULT_LOAD: dict = {
     "ev_charge_limit_entity": None,  # entities driver: the car's charge limit (%)
     "ev_min_power_w": None,  # Solar mode: always charge at least this, topped up from the grid
     "ev_current_step_interval_s": 30,
+    # Planner: departure time
+    "ev_departure_enabled": False,
+    "ev_departure_time": "07:00",
+    "ev_departure_soc": 60,
+    "ev_departure_days": [0, 1, 2, 3, 4, 5, 6],  # Monday = 0
     # Home battery
     "bat_soc_entity": None,
     "bat_power_entity": None,  # measured battery power
