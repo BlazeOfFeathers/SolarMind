@@ -13,6 +13,7 @@ export const setMode = (hass: Hass, load_id: string, mode: Mode) =>
   hass.connection.sendMessagePromise({ type: "solarmind/loads/set_mode", load_id, mode });
 export const setEvMinPower = (hass: Hass, load_id: string, power_w: number | null) =>
   hass.connection.sendMessagePromise({ type: "solarmind/loads/set_ev_min_power", load_id, power_w });
+export const notifyTest = (hass: Hass) => hass.connection.sendMessagePromise({ type: "solarmind/notify/test" });
 export const getAnalytics = (hass: Hass, start: number, end: number, load_id: string | null) =>
   hass.connection.sendMessagePromise<any>({ type: "solarmind/analytics", start, end, load_id });
 export const subscribeLive = (hass: Hass, cb: (live: Live) => void) =>

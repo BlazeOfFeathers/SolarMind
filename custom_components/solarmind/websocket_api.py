@@ -170,6 +170,24 @@ async def ws_load_set_ev_min_power(hass: HomeAssistant, connection, msg) -> None
     connection.send_result(msg["id"], {"ok": True})
 
 
+@websocket_api.websocket_command({vol.Required("type"): "solarmind/notify/test"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_notify_test(hass: HomeAssistant, connection, msg) -> None:
+    from .notifier import async_send, notify_targets
+
+    coordinator = _coord(hass)
+    if coordinator is None:
+        return _not_ready(connection, msg)
+    settings = coordinator.store.settings
+    targets = notify_targets(settings)
+    if not targets:
+        connection.send_error(msg["id"], "no_target", "No notification service selected")
+        return
+    await async_send(hass, settings, [coordinator.notifier.test_message()])
+    connection.send_result(msg["id"], {"sent_to": targets})
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "solarmind/analytics",
@@ -224,6 +242,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
         ws_settings_save,
         ws_load_save,
         ws_load_delete,
+        ws_notify_test,
         ws_load_set_ev_min_power,
         ws_load_reorder,
         ws_load_set_mode,

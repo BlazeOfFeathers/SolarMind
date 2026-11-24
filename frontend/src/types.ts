@@ -6,6 +6,7 @@ export interface Hass {
     subscribeMessage<T = any>(cb: (msg: T) => void, msg: Record<string, any>): Promise<() => void>;
   };
   themes?: { darkMode?: boolean };
+  services?: Record<string, Record<string, unknown>>;
 }
 
 export type Mode = "solar" | "solar_night" | "on" | "off";
