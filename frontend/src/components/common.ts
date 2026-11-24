@@ -26,7 +26,7 @@ export const defaultIcon = (type?: string) =>
 export const reasonTone = (r: string): string => {
   if (r === "solar") return "solar";
   if (r === "self_consumption") return "ok";
-  if (["night", "always_on", "legionella", "min_soc", "min_power"].includes(r)) return "grid";
+  if (["night", "always_on", "legionella", "min_soc", "min_power", "planned"].includes(r)) return "grid";
   if (r === "peak_guard" || r === "unavailable") return "warn";
   if (r === "target_reached" || r === "battery_full") return "ok";
   if (r === "reserve") return "warn";
@@ -47,6 +47,8 @@ export const reasonIcon = (r: string): string =>
     self_consumption: "mdi:home-lightning-bolt-outline",
     reserve: "mdi:battery-10",
     battery_full: "mdi:battery",
+    planned: "mdi:calendar-clock",
+    plan_wait: "mdi:timer-sand",
   })[r] ?? "mdi:circle-small";
 
 export const LOAD_COLORS = ["#ff9800", "#e91e63", "#7e57c2", "#26a69a", "#8bc34a", "#ff7043"];

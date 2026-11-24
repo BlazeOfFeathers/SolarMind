@@ -16,6 +16,7 @@ export const setEvMinPower = (hass: Hass, load_id: string, power_w: number | nul
 export const notifyTest = (hass: Hass) => hass.connection.sendMessagePromise({ type: "solarmind/notify/test" });
 export const getAnalytics = (hass: Hass, start: number, end: number, load_id: string | null) =>
   hass.connection.sendMessagePromise<any>({ type: "solarmind/analytics", start, end, load_id });
+export const getPlan = (hass: Hass) => hass.connection.sendMessagePromise<any>({ type: "solarmind/plan" });
 export const subscribeLive = (hass: Hass, cb: (live: Live) => void) =>
   hass.connection.subscribeMessage<Live>(cb, { type: "solarmind/subscribe" });
 export interface LogEntry { seq: number; ts: number; level: string; source: string; message: string }

@@ -245,6 +245,30 @@ def ws_analytics(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(msg["id"], payload)
 
 
+@websocket_api.websocket_command({vol.Required("type"): "solarmind/plan"})
+@websocket_api.require_admin
+@callback
+def ws_plan(hass: HomeAssistant, connection, msg) -> None:
+    """The plan for the coming hours, and today's predictions next to what was measured."""
+    coordinator = _coord(hass)
+    if coordinator is None:
+        return _not_ready(connection, msg)
+    now = dt_util.now()
+    day_start = dt_util.start_of_local_day(now).timestamp()
+    plan = coordinator.planning.plan
+    hist = coordinator.history
+    connection.send_result(
+        msg["id"],
+        {
+            "enabled": bool(coordinator.store.settings.get("plan_enabled")),
+            "plan": plan.to_dict() if plan else None,
+            "info": coordinator.planning.info,
+            "predicted": hist.prediction_rows(day_start, now.timestamp()),
+            "measured": hist.quarter_actuals(day_start, now.timestamp()),
+        },
+    )
+
+
 def _logs_payload(hass: HomeAssistant) -> dict[str, Any]:
     buffer = async_get_log_buffer(hass.data.setdefault(DOMAIN, {}))
     return {"entries": list(buffer.entries), "verbose": buffer.verbose, "max": buffer.entries.maxlen}
@@ -288,6 +312,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
         ws_load_reorder,
         ws_load_set_mode,
         ws_analytics,
+        ws_plan,
         ws_logs,
         ws_logs_clear,
         ws_logs_verbose,

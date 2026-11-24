@@ -65,6 +65,8 @@ class HistoryData:
         self.quarters: dict[str, list[list[float]]] = data.get("quarters", {})
         self.sessions: list[dict[str, Any]] = data.get("sessions", [])
         self.open_sessions: dict[str, dict[str, Any]] = data.get("open_sessions", {})
+        # Planner: what was predicted per quarter (start_ts -> [pv W, house W]), for "predicted vs measured"
+        self.predictions: dict[str, list[float]] = data.get("predictions", {})
         self._acc = _MinuteAcc()
         self._last_on: dict[str, bool] = {}
         self.dirty = False
@@ -76,7 +78,18 @@ class HistoryData:
             "quarters": self.quarters,
             "sessions": self.sessions,
             "open_sessions": self.open_sessions,
+            "predictions": self.predictions,
         }
+
+    def add_prediction(self, slot_ts: float, pv_w: float, base_w: float) -> None:
+        """Keep the prediction for a quarter as it was made at its start (first one wins)."""
+        key = str(int(slot_ts))
+        if key not in self.predictions:
+            self.predictions[key] = [round(pv_w), round(base_w)]
+            self.dirty = True
+
+    def prediction_rows(self, start_ts: float, end_ts: float) -> list[list[float]]:
+        return sorted([int(k), v[0], v[1]] for k, v in self.predictions.items() if start_ts <= int(k) < end_ts)
 
     # ------------------------------------------------------------------ record
 
@@ -215,6 +228,10 @@ class HistoryData:
             for key in [k for k in store if k < limit]:
                 del store[key]
                 self.dirty = True
+        oldest = (local_now - timedelta(days=SAMPLE_DAYS)).timestamp()
+        for key in [k for k in self.predictions if int(k) < oldest]:
+            del self.predictions[key]
+            self.dirty = True
 
     def remove_load(self, lid: str) -> None:
         for rows in self.samples.values():
@@ -237,6 +254,26 @@ class HistoryData:
                     loads = row[3] if load_id is None else {load_id: row[3][load_id]} if load_id in row[3] else {}
                     out.append([row[0], row[1], row[2], loads])
         return {"columns": ["ts", "pv_w", "grid_w", "loads"], "load_columns": ["power_w", "solar_w", "reason", "on", "value"], "rows": out}
+
+    def quarter_actuals(self, start_ts: float, end_ts: float) -> list[list[Any]]:
+        """Measured average per quarter: [start_ts, pv W, house W (without managed loads), {load: W}]."""
+        acc: dict[int, list[Any]] = {}
+        for key in sorted(self.samples):
+            for row in self.samples[key]:
+                if not start_ts <= row[0] < end_ts:
+                    continue
+                q = int(row[0] - row[0] % 900)
+                a = acc.setdefault(q, [0, 0.0, 0.0, {}])
+                managed = sum((ld[0] or 0) for ld in row[3].values())
+                a[0] += 1
+                a[1] += row[1] or 0
+                a[2] += max(0.0, (row[1] or 0) + (row[2] or 0) - managed)
+                for lid, ld in row[3].items():
+                    a[3][lid] = a[3].get(lid, 0.0) + max(0.0, ld[0] or 0)
+        return [
+            [q, round(a[1] / a[0]), round(a[2] / a[0]), {lid: round(w / a[0]) for lid, w in a[3].items()}]
+            for q, a in sorted(acc.items())
+        ]
 
     def day_totals(self, start_key: str, end_key: str) -> dict[str, dict[str, Any]]:
         return {k: v for k, v in sorted(self.days.items()) if start_key <= k <= end_key}

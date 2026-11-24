@@ -45,6 +45,20 @@ Elke 10 seconden:
 3. Verbruikers die het net mogen gebruiken (*altijd aan*, nachtaanvulling, legionella, EV onder minimum-% of op minimaal laadvermogen) krijgen daarnaast de ruimte die de piekbewaking nog toelaat dit kwartier.
 4. Start- en stopvertragingen en minimale looptijden worden toegepast. De piekbewaking grijpt meteen in.
 
+## Voorspellend plannen (MPC)
+
+Naar het voorbeeld van RoomMind: SolarMind voorspelt per kwartier je zon (Solcast `detailedForecast`, Open-Meteo `watts`/`wh_period`, of het dagtotaal gespreid over de dag) en je huisverbruik (geleerd per uur uit de laatste 14 dagen), plant de komende 36 uur voor elke verbruiker en plant elke minuut opnieuw. De gewone verdeling blijft elke 10 seconden sturen; de planning zegt haar alleen hoeveel netvermogen een verbruiker dit kwartier mag nemen.
+
+Aan te zetten onder *Instellingen → Voorspellend plannen*. Elk onderdeel staat apart aan of uit:
+
+- **Boilers** (Zon + nacht): 's nachts alleen het tekort bijvullen. De dagelijkse behoefte wordt geleerd uit de dagen dat de boiler vol raakte, of zelf ingesteld. Met een optionele temperatuursensor rekent SolarMind met inhoud × temperatuurstijging.
+- **Auto**: nachtladen tot het doel-% alleen voor wat de zon niet geeft, gespreid over de nacht; met een **vertrektijd** (per auto, met dagen) minstens het gekozen % tegen dat uur.
+- **Thuisbatterij** (Zon + nacht): 's nachts alleen bijladen wat de zon van morgen niet zal leveren.
+- **Piekspreiding**: netenergie gaat naar de kwartieren met de laagste afname, onder je piekgrens.
+- **Huisverbruik leren** of een vaste waarde.
+
+In *Analytics* toont de kaart **Planning** vandaag (verwacht tegenover gemeten) en de komende uren als raster per uur, zoals het dagritme van RoomMind: per verbruiker wanneer hij zon of net krijgt.
+
 ## Thuisbatterij
 
 Voeg een verbruiker toe met *Type: Thuisbatterij*. SolarMind stuurt elke cyclus één vermogen naar de batterij (+ laden, − ontladen) via entities van je omvormer-integratie (Huawei Solar, Sigenergy, Sungrow, Victron, Marstek, ...):
@@ -84,6 +98,5 @@ cd frontend && npm install && npm run build   # bouwt custom_components/solarmin
 ## Op de planning
 
 - Dynamische tarieven (ENTSO-E / Nordpool): nachtaanvulling in de goedkoopste uren, alles aan bij negatieve prijzen.
-- Vertrektijd voor de EV ("om 7u minstens 50%").
 - Thuisbatterij: laden in de goedkoopste uren bij een dynamisch tarief, en de vermeden capaciteitspiek in euro.
 - Dashboardkaart.

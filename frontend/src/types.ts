@@ -59,6 +59,9 @@ export interface LiveLoad {
   eta_empty_s?: number | null;
   discharge_kwh_today?: number;
   driver_error?: string | null;
+  // Planner
+  plan?: Record<string, any> | null;
+  need_learned_kwh?: number | null;
 }
 
 export interface Live {

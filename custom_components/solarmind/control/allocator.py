@@ -51,6 +51,7 @@ from ..const import (
     R_NO_SURPLUS,
     R_NOT_CONNECTED,
     R_PEAK,
+    R_PLANNED,
     R_RESERVE,
     R_SELF_CONSUMPTION,
     R_SOLAR,
@@ -129,6 +130,8 @@ class SiteState:
     base_avg_w: float | None = None  # house load without managed loads, averaged (~1.5 min)
     smooth_bonus_w: float = 0.0  # set by allocate(): extra surplus the average shows vs. now
     ev_floor_paused: bool = False  # forecast: enough sun still coming, no grid top-up for the EV minimum
+    # Planner: loads whose grid use the plan decides -> grid power planned for this quarter (W)
+    plan_grid_w: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -205,6 +208,12 @@ def _grid_need(cfg: dict[str, Any], st: LoadState, rt: LoadRuntime, site: SiteSt
         and site.now - rt.last_hot_ts >= cfg.get("legionella_interval_days", 7) * 86400
     ):
         return R_LEGIONELLA
+    planned = site.plan_grid_w.get(cfg["id"])
+    if planned is not None:
+        # The planner decides when this load uses the grid (it replaces the night fallback).
+        if planned <= 0 or (not is_ev and rt.is_full):
+            return None
+        return R_PLANNED
     if mode == MODE_SOLAR_NIGHT and site.in_night and rt.night_needed:
         if is_ev:
             if st.soc is not None:
@@ -344,13 +353,18 @@ def _decide_battery_charge(
     max_soc = float(cfg.get("bat_max_soc", 100))
 
     grid_reason = None
+    planned = site.plan_grid_w.get(lid)
     if soc is not None and soc < target:
         if mode == MODE_ON:
             grid_reason = R_ALWAYS_ON
+        elif planned is not None:
+            grid_reason = R_PLANNED if planned > 0 else None
         elif mode == MODE_SOLAR_NIGHT and site.in_night and rt.night_needed:
             grid_reason = R_NIGHT
     if grid_reason is not None:
         watts = max_w if grid_headroom == INF else min(max_w, solar_pool + grid_headroom)
+        if grid_reason == R_PLANNED:
+            watts = min(watts, solar_pool + float(planned or 0))
         if watts <= 0:
             return Decision(lid, True, setpoint_w=0.0, reason=R_PEAK)
         return Decision(lid, True, setpoint_w=watts, reason=grid_reason, allocated_w=watts, wants_grid=True)
@@ -467,13 +481,17 @@ def _decide_grid(
     if cfg["type"] == LOAD_EV:
         wpa = ev_watts_per_amp(cfg, site.voltage)
         amps = cfg["ev_max_current"] if avail == INF else min(cfg["ev_max_current"], math.floor(avail / wpa))
+        if reason == R_PLANNED:
+            # The planned power plus whatever sun there is now, at least the minimum current.
+            plan_amps = math.floor((solar_pool + site.plan_grid_w.get(lid, 0.0)) / wpa + 1e-9)
+            amps = min(amps, max(int(cfg["ev_min_current"]), plan_amps))
         if amps < cfg["ev_min_current"]:
             if not cfg.get("peak_shed", True):
                 amps = cfg["ev_min_current"]
             else:
                 rt.pending_on = None
                 return _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_PEAK), force=True)
-        if avail != INF and amps < cfg["ev_max_current"]:
+        if avail != INF and amps < cfg["ev_max_current"] and reason != R_PLANNED:
             reason = R_PEAK  # turned down to stay under the quarter-hour peak
         dec = Decision(lid, True, current_a=int(amps), reason=reason, allocated_w=amps * wpa, wants_grid=True)
         return _with_timing(cfg, st, rt, site.now, _rate_limit_current(cfg, st, rt, site.now, dec), grid=True)
