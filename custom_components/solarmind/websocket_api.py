@@ -10,7 +10,17 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_LOAD, DEFAULT_SETTINGS, DOMAIN, LOAD_TYPES, MODES, REASONS, VERSION
+from .const import (
+    BATTERY_MODES,
+    DEFAULT_LOAD,
+    DEFAULT_SETTINGS,
+    DOMAIN,
+    LOAD_MODES,
+    LOAD_TYPES,
+    MODES,
+    REASONS,
+    VERSION,
+)
 from .history import day_key, rhythm, summarize
 
 
@@ -29,6 +39,8 @@ def _config_payload(coordinator) -> dict[str, Any]:
         "loads": coordinator.store.loads,
         "defaults": {"load": DEFAULT_LOAD, "settings": DEFAULT_SETTINGS},
         "modes": MODES,
+        "load_modes": LOAD_MODES,
+        "battery_modes": BATTERY_MODES,
         "load_types": LOAD_TYPES,
         "reasons": REASONS,
         "live": coordinator.live,
@@ -138,7 +150,7 @@ async def ws_load_reorder(hass: HomeAssistant, connection, msg) -> None:
     {
         vol.Required("type"): "solarmind/loads/set_mode",
         vol.Required("load_id"): str,
-        vol.Required("mode"): vol.In(MODES),
+        vol.Required("mode"): vol.In(MODES),  # checked per load type in the store
     }
 )
 @websocket_api.require_admin

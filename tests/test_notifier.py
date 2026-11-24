@@ -85,3 +85,13 @@ async def test_async_send(hass: HomeAssistant) -> None:
     await async_send(hass, {"notify_services": ["notify.mobile_app_phone", "notify.missing"]}, [tr.test_message()])
     await hass.async_block_till_done()
     assert calls and calls[0]["data"]["tag"] == "solarmind_test"
+
+
+def test_battery_discharging_for_peak_is_not_reported():
+    loads = [*LOADS, {"id": "bat", "name": "Batterij", "type": "battery", "enabled": True}]
+    tr = NotificationTracker()
+    snap = live()
+    snap["loads"]["bat"] = {"available": True, "reason": "solar"}
+    tr.update(0, snap, loads, SETTINGS)
+    snap["loads"]["bat"] = {"available": True, "reason": "peak_guard", "setpoint_w": -1000}
+    assert tr.update(10, snap, loads, SETTINGS) == []

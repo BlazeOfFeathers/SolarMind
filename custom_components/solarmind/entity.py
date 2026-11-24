@@ -43,7 +43,7 @@ class SolarMindLoadEntity(CoordinatorEntity[SolarMindCoordinator]):
             identifiers={(DOMAIN, load["id"])},
             name=load["name"] or "SolarMind load",
             manufacturer="SolarMind",
-            model="EV charger" if load["type"] == "ev" else "Switched load",
+            model={"ev": "EV charger", "battery": "Home battery"}.get(load["type"], "Switched load"),
             via_device=(DOMAIN, "site"),
         )
 

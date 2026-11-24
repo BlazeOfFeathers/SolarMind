@@ -17,6 +17,7 @@ from .const import (
     DOMAIN,
     GRID_SIGN_EXPORT_POSITIVE,
     HISTORY_STORAGE_KEY,
+    LOAD_BATTERY,
     LOAD_EV,
     STORAGE_VERSION,
     UPDATE_INTERVAL,
@@ -41,6 +42,28 @@ from .store import SolarMindStore
 _LOGGER = logging.getLogger(__name__)
 
 HISTORY_SAVE_DELAY = 300
+
+
+def battery_live(cfg: dict[str, Any], st: LoadState, dec: Decision) -> dict[str, Any]:
+    """Setpoint and time to full / to the reserve at the present power."""
+    cap = float(cfg.get("bat_capacity_kwh") or 0)
+    p = st.power_w or 0.0
+    out: dict[str, Any] = {
+        "setpoint_w": None if dec.setpoint_w is None else round(dec.setpoint_w),
+        "capacity_kwh": cap or None,
+        "stored_kwh": round(cap * st.soc / 100, 2) if cap and st.soc is not None else None,
+        "eta_full_s": None,
+        "eta_empty_s": None,
+    }
+    if not cap or st.soc is None:
+        return out
+    if p > MIN_CHARGING_W:
+        top = float(cfg.get("bat_max_soc", 100))
+        out["eta_full_s"] = round(max(0.0, top - st.soc) / 100 * cap * 3.6e6 / p) if st.soc < top else None
+    elif p < -MIN_CHARGING_W:
+        floor = float(cfg.get("bat_min_soc", 10))
+        out["eta_empty_s"] = round(max(0.0, st.soc - floor) / 100 * cap * 3.6e6 / -p) if st.soc > floor else None
+    return out
 
 
 def parse_hhmm(value: str) -> tuple[int, int]:
@@ -95,12 +118,19 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.rebuild_drivers()
 
     def rebuild_drivers(self) -> None:
+        old = self.drivers
         self.drivers = {cfg["id"]: make_driver(self.hass, cfg) for cfg in self.store.loads}
+        for lid, drv in old.items():
+            if lid not in self.drivers:
+                # A removed battery must not stay in remote control.
+                self.hass.async_create_task(drv.async_close())
         for lid in list(self.runtimes):
             if self.store.get_load(lid) is None:
                 del self.runtimes[lid]
 
     async def async_shutdown_save(self) -> None:
+        for drv in self.drivers.values():
+            await drv.async_close()
         self._persist_runtime()
         await self.store.async_save()
         await self._history_store.async_save(self.history.to_dict())
@@ -199,8 +229,20 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             result_decisions = result.decisions
             base_w, surplus_w, headroom = result.base_w, result.surplus_w, result.grid_headroom_w
 
+        # A battery SolarMind cannot steer (disabled, no grid reading, master switch off)
+        # goes back to the inverter's own control instead of keeping its last setpoint.
+        control_on = settings.get("enabled", True) and grid is not None
+        for i, cfg in enumerate(loads):
+            if cfg["type"] == LOAD_BATTERY and (not control_on or not cfg.get("enabled", True)) and states[cfg["id"]].available:
+                result_decisions[i] = Decision(cfg["id"], False, reason=result_decisions[i].reason)
+                if not control_on:
+                    try:
+                        await self.drivers[cfg["id"]].async_apply(states[cfg["id"]], result_decisions[i])
+                    except Exception:
+                        _LOGGER.exception("Releasing battery %s failed", cfg.get("name"))
+
         # Apply
-        if settings.get("enabled", True) and grid is not None:
+        if control_on:
             for cfg, dec in zip(loads, result_decisions, strict=True):
                 st = states[cfg["id"]]
                 if not st.available:
@@ -215,28 +257,35 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.exception("Controlling load %s failed", cfg.get("name"))
 
         # Energy accounting: managed loads get solar first after the house base load.
-        managed_total = sum(actual_power(c, states[c["id"]], voltage) for c in loads if states[c["id"]].available)
-        grid_for_managed = min(managed_total, max(0.0, grid or 0.0))
-        solar_frac = 1.0 - (grid_for_managed / managed_total) if managed_total > 0 else 0.0
+        # A discharging battery is not solar: what it delivers counts like grid import.
+        powers = {c["id"]: actual_power(c, states[c["id"]], voltage) if states[c["id"]].available else 0.0 for c in loads}
+        managed_total = sum(powers.values())
+        consumers = sum(max(0.0, p) for p in powers.values())
+        discharge_total = sum(-p for p in powers.values() if p < 0)
+        grid_for_managed = min(consumers, max(0.0, grid or 0.0) + discharge_total)
+        solar_frac = 1.0 - (grid_for_managed / consumers) if consumers > 0 else 0.0
         samples: dict[str, LoadSample] = {}
         loads_live: dict[str, Any] = {}
         for cfg, dec in zip(loads, result_decisions, strict=True):
             st = states[cfg["id"]]
             rt = self.runtimes.setdefault(cfg["id"], LoadRuntime())
-            p = actual_power(cfg, st, voltage) if st.available else 0.0
+            signed_p = powers[cfg["id"]]
+            p = max(0.0, signed_p)
+            discharge_p = max(0.0, -signed_p)
             solar_p = p * solar_frac
             if dt_s > 0:
                 rt.solar_kwh_day += solar_p * dt_s / 3.6e6
                 if is_night:
                     rt.night_kwh += p * dt_s / 3.6e6
-            value = st.soc if cfg["type"] == LOAD_EV else st.temperature
+            value = st.soc if cfg["type"] in (LOAD_EV, LOAD_BATTERY) else st.temperature
             samples[cfg["id"]] = LoadSample(
-                power_w=p, solar_w=solar_p, on=st.is_on, reason=dec.reason, value=value, plugged=st.plugged, soc=st.soc
+                power_w=p, solar_w=solar_p, on=st.is_on, reason=dec.reason, value=value, plugged=st.plugged, soc=st.soc,
+                discharge_w=discharge_p,
             )
             loads_live[cfg["id"]] = {
                 "available": st.available,
                 "is_on": st.is_on,
-                "power_w": round(p, 1),
+                "power_w": round(signed_p, 1),
                 "solar_w": round(solar_p, 1),
                 "current_a": st.current_a,
                 "target_current_a": dec.current_a,
@@ -256,6 +305,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
             if cfg["type"] == LOAD_EV:
                 loads_live[cfg["id"]].update(self._ev_eta(cfg, st, p, now, dt_s, voltage))
+            elif cfg["type"] == LOAD_BATTERY:
+                loads_live[cfg["id"]].update(battery_live(cfg, st, dec))
         if grid is not None and dt_s > 0:
             self.history.record(local, dt_s, pv, grid, samples)
 
@@ -269,6 +320,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             live["kwh_today"] = round(d.get("kwh", 0.0), 3)
             live["solar_kwh_today"] = round(d.get("solar_kwh", 0.0), 3)
             live["runtime_today_s"] = round(d.get("runtime_s", 0.0))
+            if "discharge_kwh" in d:
+                live["discharge_kwh_today"] = round(d["discharge_kwh"], 3)
 
         self.live = {
             "site": {

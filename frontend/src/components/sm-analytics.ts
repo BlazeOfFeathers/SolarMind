@@ -4,7 +4,7 @@ import { getAnalytics } from "../api";
 import { t } from "../i18n";
 import { cardStyles, fmtDur, fmtEur, fmtKwh, fmtPct, fmtW, tokens } from "../styles/tokens";
 import type { Hass, Load } from "../types";
-import { LOAD_COLORS, reasonTone } from "./common";
+import { LOAD_COLORS, defaultIcon, reasonTone } from "./common";
 import type { Bar, BandSeg, Panel, Series } from "./sm-chart";
 import "./sm-chart";
 import "./shared/sm-segmented";
@@ -142,11 +142,14 @@ export class SmAnalytics extends LitElement {
       const series: Series[] = [
         { label: t("a.from_solar"), color: SOLAR, kind: "area", stack: "l", values: rows.map((r: any) => r[3][lid]?.[1] ?? 0) },
         { label: t("a.from_grid"), color: GRID, kind: "area", stack: "l", values: rows.map((r: any) => Math.max(0, (r[3][lid]?.[0] ?? 0) - (r[3][lid]?.[1] ?? 0))) },
+        ...(load?.type === "battery"
+          ? [{ label: t("a.discharged"), color: "var(--sm-ok)", kind: "area" as const, stack: "d", values: rows.map((r: any) => Math.max(0, -(r[3][lid]?.[0] ?? 0))) }]
+          : []),
         { label: t("a.pv"), color: "var(--secondary-text-color)", kind: "line", dashed: true, values: rows.map((r: any) => r[1]) },
       ];
       panels.push({ title: `${t("a.power")} (W)`, unit: "W", height: 220, series });
       if (rows.some((r: any) => r[3][lid]?.[4] != null)) {
-        const isEv = load?.type === "ev";
+        const isEv = load?.type === "ev" || load?.type === "battery";
         panels.push({
           title: isEv ? `${t("a.soc")} (%)` : `${t("a.temperature")} (°C)`, unit: isEv ? "%" : "°C", height: 90, zero: false,
           series: [{ label: isEv ? t("a.soc") : t("a.temperature"), color: "var(--sm-err)", kind: "line", values: rows.map((r: any) => r[3][lid]?.[4] ?? null) }],
@@ -155,7 +158,7 @@ export class SmAnalytics extends LitElement {
       panels.push({ title: t("a.why"), unit: "", height: 22, bands: [this._band(rows, lid, "")] });
     } else {
       const series: Series[] = this.loads.map((l, i) => ({
-        label: l.name, color: LOAD_COLORS[i % LOAD_COLORS.length], kind: "area" as const, stack: "loads", values: rows.map((r: any) => r[3][l.id]?.[0] ?? 0),
+        label: l.name, color: LOAD_COLORS[i % LOAD_COLORS.length], kind: "area" as const, stack: "loads", values: rows.map((r: any) => Math.max(0, r[3][l.id]?.[0] ?? 0)),
       }));
       series.push({ label: t("a.pv"), color: SOLAR, kind: "line", values: rows.map((r: any) => r[1]) });
       panels.push({ title: `${t("a.power")} (W)`, unit: "W", height: 220, series });
@@ -183,6 +186,18 @@ export class SmAnalytics extends LitElement {
       const l = sum.loads[this.loadId];
       if (!l) return html`<div class="empty">${t("a.no_data")}</div>`;
       const share = l.solar_share ?? 0;
+      const bat = this.loads.find((x) => x.id === this.loadId);
+      if (bat?.type === "battery") {
+        const cap = bat.bat_capacity_kwh || 0;
+        return html`<div class="tiles">
+          ${this._tile(fmtKwh(l.kwh), t("a.charged"), l.kwh > 0 ? [share, 1 - share] : undefined)}
+          ${this._tile(fmtPct(l.solar_share), t("a.solar_share"))}
+          ${this._tile(fmtKwh(l.discharge_kwh ?? 0), t("a.discharged"))}
+          ${this._tile(fmtPct(l.efficiency ?? null), t("a.efficiency"))}
+          ${this._tile(cap ? ((l.discharge_kwh ?? 0) / cap).toFixed(1) : "–", t("a.cycles"))}
+          ${this._tile(fmtEur(l.saving), t("a.saving"))}
+        </div>`;
+      }
       const reasons = Object.entries(l.reasons ?? {})
         .filter(([r]) => reasonTone(r))
         .sort((a: any, b: any) => b[1] - a[1]);
@@ -285,7 +300,7 @@ export class SmAnalytics extends LitElement {
 
   render() {
     const loadOpts = [{ value: "", label: t("a.all"), icon: "mdi:home-lightning-bolt-outline" }].concat(
-      this.loads.map((l) => ({ value: l.id, label: l.name, icon: l.icon || (l.type === "ev" ? "mdi:ev-station" : "mdi:water-boiler") })),
+      this.loads.map((l) => ({ value: l.id, label: l.name, icon: l.icon || defaultIcon(l.type) })),
     );
     const ranges: Range[] = ["today", "yesterday", "7d", "30d", "month"];
     return html`

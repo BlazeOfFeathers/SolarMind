@@ -98,7 +98,11 @@ class NotificationTracker:
         names = {cfg["id"]: cfg.get("name") or cfg["id"] for cfg in loads}
 
         # --- peak guard
-        shed_now = {lid for lid, lv in loads_live.items() if lv.get("reason") == R_PEAK and lid in names}
+        # A battery discharging for the peak is helping, not held back: no message for it.
+        shed_now = {
+            lid for lid, lv in loads_live.items()
+            if lv.get("reason") == R_PEAK and lid in names and not (lv.get("setpoint_w") or 0) < 0
+        }
         if self._primed and settings.get("notify_peak", True):
             new = shed_now - self.shed
             if new and (now - self.last_peak_ts >= PEAK_REPEAT_S or not self.shed):
