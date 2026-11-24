@@ -172,7 +172,12 @@ export class SmLoadDetail extends LitElement {
           },
           {
             icon: "mdi:car-battery", title: t("f.ev_battery_kwh"),
-            secondary: (_l: Load, lv?: LiveLoad) => (lv?.battery_kwh_learned ? t("detail.battery_learned").replace("{kwh}", `${lv.battery_kwh_learned} kWh`) : t("detail.battery_learning")),
+            secondary: (_l: Load, lv?: LiveLoad) =>
+              lv?.battery_kwh_learned
+                ? t("detail.battery_learned").replace("{kwh}", `${lv.battery_kwh_learned} kWh`)
+                : lv?.battery_kwh_source === "car" && lv.battery_kwh
+                  ? t("detail.battery_car").replace("{kwh}", `${lv.battery_kwh} kWh`)
+                  : t("detail.battery_learning"),
             value: (l, lv) => (l.ev_battery_kwh ? `${l.ev_battery_kwh} kWh` : lv?.battery_kwh_learned ? `${lv.battery_kwh_learned} kWh (${t("detail.learned")})` : "–"),
             fields: [{ key: "ev_battery_kwh", kind: "number", nullable: true, unit: "kWh" }],
           },

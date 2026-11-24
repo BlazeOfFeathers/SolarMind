@@ -233,6 +233,7 @@ class TeslaBleProxyDriver(BaseDriver):
             soc=None if soc is None else float(soc),
             plugged=plugged,
             charge_limit=_float_or_none(cs.get("charge_limit_soc")),
+            car_time_to_limit_h=_car_hours_to_limit(cs),
         )
 
     async def async_apply(self, st: LoadState, dec: Decision) -> bool:
@@ -252,6 +253,14 @@ class TeslaBleProxyDriver(BaseDriver):
                     self._charge_state["charging_state"] = "Charging" if dec.on else "Stopped"
             self._last_poll = 0.0  # re-read soon
         return changed
+
+
+def _car_hours_to_limit(cs: dict[str, Any]) -> float | None:
+    """The car's own time-to-charge-limit estimate (the BLE proxy reports minutes)."""
+    minutes = _float_or_none(cs.get("minutes_to_full_charge"))
+    if minutes is not None:
+        return minutes / 60
+    return _float_or_none(cs.get("time_to_full_charge"))
 
 
 def _float_or_none(value: Any) -> float | None:

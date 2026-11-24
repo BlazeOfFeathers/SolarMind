@@ -52,6 +52,16 @@ def time_to_soc_s(soc: float, target: float, capacity_kwh: float, power_w: float
     return kwh * 3.6e6 / battery_w
 
 
+def capacity_from_car_estimate(
+    soc: float | None, limit: float | None, hours: float | None, power_w: float | None
+) -> float | None:
+    """Battery size implied by the car's own time-to-limit estimate (quick first guess)."""
+    if soc is None or limit is None or not hours or not power_w or limit - soc < 3:
+        return None
+    est = hours * power_w * CHARGE_EFFICIENCY / 1000 / ((limit - soc) / 100)
+    return est if LEARN_MIN_KWH <= est <= LEARN_MAX_KWH else None
+
+
 @dataclass
 class CapacityLearner:
     """Learn the usable battery size from energy charged vs. SoC gained."""
@@ -59,6 +69,7 @@ class CapacityLearner:
     learned_kwh: float | None = None
     anchor_soc: float | None = None
     energy_kwh: float = 0.0  # wall energy since the anchor
+    guess_kwh: float | None = None  # first guess from the car's own estimate
 
     def update(self, soc: float | None, plugged: bool | None, delta_kwh: float) -> None:
         if soc is None or plugged is False:
@@ -80,9 +91,14 @@ class CapacityLearner:
             self.energy_kwh = 0.0
 
     def to_dict(self) -> dict:
-        return {"learned_kwh": self.learned_kwh, "anchor_soc": self.anchor_soc, "energy_kwh": self.energy_kwh}
+        return {
+            "learned_kwh": self.learned_kwh,
+            "anchor_soc": self.anchor_soc,
+            "energy_kwh": self.energy_kwh,
+            "guess_kwh": self.guess_kwh,
+        }
 
     @classmethod
     def from_dict(cls, data: dict | None) -> CapacityLearner:
         data = data or {}
-        return cls(data.get("learned_kwh"), data.get("anchor_soc"), float(data.get("energy_kwh") or 0.0))
+        return cls(data.get("learned_kwh"), data.get("anchor_soc"), float(data.get("energy_kwh") or 0.0), data.get("guess_kwh"))

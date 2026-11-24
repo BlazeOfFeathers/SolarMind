@@ -31,7 +31,7 @@ from .control.allocator import (
     allocate,
     evaluate_night_need,
 )
-from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, time_to_soc_s
+from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, capacity_from_car_estimate, time_to_soc_s
 from .control.peak import PeakTracker, month_key_of
 from .drivers import BaseDriver, make_driver, read_float
 from .history import HistoryData, LoadSample
@@ -311,16 +311,41 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if st.available:
             learner.update(st.soc, st.plugged, power_w * dt_s / 3.6e6 if charging else 0.0)
         capacity = cfg.get("ev_battery_kwh") or learner.learned_kwh
+        source = "set" if cfg.get("ev_battery_kwh") else "learned" if capacity else None
+        if not capacity and charging:
+            # Until we learned it: derive it from the car's own time-to-limit estimate.
+            guess = capacity_from_car_estimate(st.soc, st.charge_limit, st.car_time_to_limit_h, avg.average())
+            if guess:
+                learner.guess_kwh = guess
+        if not capacity and learner.guess_kwh:
+            capacity, source = learner.guess_kwh, "car"
         out: dict[str, Any] = {
             "battery_kwh": round(capacity, 1) if capacity else None,
+            "battery_kwh_source": source,
             "battery_kwh_learned": round(learner.learned_kwh, 1) if learner.learned_kwh else None,
             "charge_limit": st.charge_limit,
             "eta_full_s": None,
             "eta_limit_s": None,
             "eta_estimated": False,
+            "eta_source": None,
         }
-        if not st.available or st.soc is None or not capacity or st.plugged is False:
+        if not st.available or st.soc is None or st.plugged is False:
             return out
+        limit = st.charge_limit if st.charge_limit is not None and st.soc < st.charge_limit else None
+        car_s = st.car_time_to_limit_h * 3600 if charging and limit and st.car_time_to_limit_h else None
+        if car_s:
+            # The car's own estimate (Tesla) is the most accurate for the part up to its limit.
+            out["eta_source"] = "car"
+            if limit < 100:
+                out["eta_limit_s"] = round(car_s)
+                rest = time_to_soc_s(limit, 100.0, capacity, avg.average() or power_w) if capacity else None
+                out["eta_full_s"] = None if rest is None else round(car_s + rest)
+            else:
+                out["eta_full_s"] = round(car_s)
+            return out
+        if not capacity:
+            return out
+        out["eta_source"] = "calc"
         power = avg.average() if charging else None
         if power is None:
             # Paused: estimate at the minimum the car would charge with.
@@ -330,8 +355,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             out["eta_estimated"] = True
         full = time_to_soc_s(st.soc, 100.0, capacity, power)
         out["eta_full_s"] = None if full is None else round(full)
-        if st.charge_limit is not None and st.soc < st.charge_limit < 100:
-            lim = time_to_soc_s(st.soc, st.charge_limit, capacity, power)
+        if limit is not None and limit < 100:
+            lim = time_to_soc_s(st.soc, limit, capacity, power)
             out["eta_limit_s"] = None if lim is None else round(lim)
         return out
 

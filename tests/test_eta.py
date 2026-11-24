@@ -74,3 +74,64 @@ def test_coordinator_eta_live_fields():
     out = SolarMindCoordinator._ev_eta(fake, cfg, st2, 0, 1010.0, 10, 230)
     assert out["eta_estimated"] is True
     assert out["eta_limit_s"] == round(0.30 * 60 / (1380 * 0.9 / 1000) * 3600)
+
+
+def test_capacity_from_car_estimate():
+    from custom_components.solarmind.control.eta import capacity_from_car_estimate
+
+    # 55 % -> 80 % in 6.2 h at 3 kW: 6.2 * 3 * 0.9 / 0.25 = 66.96 kWh
+    assert capacity_from_car_estimate(55, 80, 6.2, 3000) == pytest.approx(66.96)
+    assert capacity_from_car_estimate(79, 80, 1, 3000) is None  # too close to the limit
+    assert capacity_from_car_estimate(55, 80, 0.1, 3000) is None  # implausible
+    assert capacity_from_car_estimate(55, None, 6, 3000) is None
+
+
+def test_coordinator_uses_car_estimate_until_learned():
+    import copy
+    from types import SimpleNamespace
+
+    from custom_components.solarmind.const import DEFAULT_LOAD, LOAD_EV
+    from custom_components.solarmind.control.allocator import LoadState
+    from custom_components.solarmind.coordinator import SolarMindCoordinator
+
+    fake = SimpleNamespace(_ev_power={}, _ev_capacity={})
+    cfg = copy.deepcopy(DEFAULT_LOAD)
+    cfg.update(id="ev", type=LOAD_EV, mode="solar")
+    st = LoadState(is_on=True, power_w=3000, soc=55, charge_limit=80, plugged=True, car_time_to_limit_h=6.2)
+    out = SolarMindCoordinator._ev_eta(fake, cfg, st, 3000, 1000.0, 10, 230)
+    assert out["battery_kwh_source"] == "car"
+    assert out["battery_kwh"] == pytest.approx(67.0)
+    assert out["eta_full_s"] and out["eta_limit_s"]
+    # Without the car estimate and without a capacity: no time.
+    fake2 = SimpleNamespace(_ev_power={}, _ev_capacity={})
+    st2 = LoadState(is_on=True, power_w=3000, soc=55, charge_limit=80, plugged=True)
+    assert SolarMindCoordinator._ev_eta(fake2, cfg, st2, 3000, 1000.0, 10, 230)["eta_full_s"] is None
+
+
+def test_coordinator_prefers_car_time_to_limit():
+    import copy
+    from types import SimpleNamespace
+
+    from custom_components.solarmind.const import DEFAULT_LOAD, LOAD_EV
+    from custom_components.solarmind.control.allocator import LoadState
+    from custom_components.solarmind.control.eta import time_to_soc_s
+    from custom_components.solarmind.coordinator import SolarMindCoordinator
+
+    fake = SimpleNamespace(_ev_power={}, _ev_capacity={})
+    cfg = copy.deepcopy(DEFAULT_LOAD)
+    cfg.update(id="ev", type=LOAD_EV, mode="solar", ev_battery_kwh=60)
+    st = LoadState(is_on=True, power_w=3000, soc=55, charge_limit=80, plugged=True, car_time_to_limit_h=5.0)
+    out = SolarMindCoordinator._ev_eta(fake, cfg, st, 3000, 1000.0, 10, 230)
+    assert out["eta_source"] == "car"
+    assert out["eta_limit_s"] == 5 * 3600
+    assert out["eta_full_s"] == round(5 * 3600 + time_to_soc_s(80, 100, 60, 3000))
+    # Limit at 100 %: the car's time is the time to full; no capacity needed.
+    fake2 = SimpleNamespace(_ev_power={}, _ev_capacity={})
+    cfg2 = dict(cfg, ev_battery_kwh=None)
+    st2 = LoadState(is_on=True, power_w=3000, soc=55, charge_limit=100, plugged=True, car_time_to_limit_h=2.0)
+    out = SolarMindCoordinator._ev_eta(fake2, cfg2, st2, 3000, 1000.0, 10, 230)
+    assert out["eta_full_s"] == 7200 and out["eta_limit_s"] is None
+    # Paused: the car reports nothing useful, fall back to the calculation.
+    st3 = LoadState(is_on=False, power_w=0, soc=55, charge_limit=80, plugged=True, car_time_to_limit_h=0.0)
+    out = SolarMindCoordinator._ev_eta(fake, cfg, st3, 0, 1010.0, 10, 230)
+    assert out["eta_source"] == "calc" and out["eta_estimated"] is True
