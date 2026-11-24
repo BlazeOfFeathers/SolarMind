@@ -54,6 +54,7 @@ class LoadSample:
     value: float | None = None
     plugged: bool | None = None
     soc: float | None = None
+    discharge_w: float = 0.0  # battery only
 
 
 class HistoryData:
@@ -111,7 +112,7 @@ class HistoryData:
 
         for lid, s in loads.items():
             la = a.loads.setdefault(lid, _LoadAcc())
-            la.energy_ws += s.power_w * dt_s
+            la.energy_ws += (s.power_w - s.discharge_w) * dt_s
             la.solar_ws += s.solar_w * dt_s
             la.seconds += dt_s
             la.reason = s.reason
@@ -121,6 +122,8 @@ class HistoryData:
             d = day["loads"].setdefault(lid, _empty_load_day())
             d["kwh"] += s.power_w * dt_s / 3.6e6
             d["solar_kwh"] += s.solar_w * dt_s / 3.6e6
+            if s.discharge_w > 0 or "discharge_kwh" in d:
+                d["discharge_kwh"] = d.get("discharge_kwh", 0.0) + s.discharge_w * dt_s / 3.6e6
             if s.on and s.power_w > 1:
                 d["runtime_s"] += dt_s
             was_on = self._last_on.get(lid)
@@ -273,6 +276,8 @@ def summarize(days: dict[str, dict[str, Any]], price_import: float, price_export
             t["solar_kwh"] += d["solar_kwh"]
             t["runtime_s"] += d["runtime_s"]
             t["starts"] += d["starts"]
+            if "discharge_kwh" in d:
+                t["discharge_kwh"] = t.get("discharge_kwh", 0.0) + d["discharge_kwh"]
             for r, sec in d.get("reasons", {}).items():
                 t["reasons"][r] = t["reasons"].get(r, 0) + sec
     for t in loads.values():
@@ -281,6 +286,11 @@ def summarize(days: dict[str, dict[str, Any]], price_import: float, price_export
         t["solar_share"] = t["solar_kwh"] / t["kwh"] if t["kwh"] > 0 else None
         t["cost"] = grid * price_import + t["solar_kwh"] * price_export  # export income given up
         t["saving"] = t["solar_kwh"] * (price_import - price_export)
+        if "discharge_kwh" in t:
+            # Battery: what it delivered was not bought, minus what charging it cost
+            # (grid at the import price, solar at the export income given up).
+            t["saving"] = t["discharge_kwh"] * price_import - t["cost"]
+            t["efficiency"] = t["discharge_kwh"] / t["kwh"] if t["kwh"] > 0 else None
     consumption = house["pv_kwh"] - house["export_kwh"] + house["import_kwh"]
     house["consumption_kwh"] = consumption
     house["self_consumption"] = (

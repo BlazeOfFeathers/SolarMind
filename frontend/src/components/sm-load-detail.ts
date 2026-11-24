@@ -4,7 +4,7 @@ import { deleteLoad, saveLoad } from "../api";
 import { t } from "../i18n";
 import { cardStyles, fmtKwh, fmtSec, fmtW, splitW, tokens } from "../styles/tokens";
 import type { Hass, LiveLoad, Load } from "../types";
-import { modeOptions, reasonTone } from "./common";
+import { defaultIcon, isBattery, modeKey, modeOptions, reasonTone } from "./common";
 import type { FieldSpec } from "./shared/sm-form";
 import "./shared/sm-dialog";
 import "./shared/sm-form";
@@ -15,6 +15,11 @@ import "./shared/sm-toggle";
 
 const isEv = (l: Record<string, any>) => l.type === "ev";
 const isTesla = (l: Record<string, any>) => isEv(l) && l.ev_driver === "tesla_ble_proxy";
+const isBat = (l: Record<string, any>) => isBattery(l);
+const notBat = (l: Record<string, any>) => !isBattery(l);
+const isSwitch = (l: Record<string, any>) => !isEv(l) && !isBat(l);
+const signOpts = () => ["charge_positive", "discharge_positive"].map((v) => ({ value: v, label: t(`f.bat_sign.${v}`) }));
+const pct = (v: number | null | undefined) => (v == null ? "–" : `${v}%`);
 
 interface RowSpec {
   icon: string;
@@ -84,6 +89,7 @@ export class SmLoadDetail extends LitElement {
       .hero-sub { font-size: 13px; color: var(--secondary-text-color); }
       .big { display: flex; align-items: flex-start; gap: 6px; padding: 8px 20px 0; }
       .big .v { font-size: 64px; font-weight: 300; line-height: 1.05; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
+      .big .dir { --mdc-icon-size: 30px; margin-top: 18px; color: var(--secondary-text-color); }
       .big .u { font-size: 22px; color: var(--secondary-text-color); margin-top: 8px; }
       .info { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 20px 0; font-size: 13px; color: var(--secondary-text-color); --mdc-icon-size: 15px; }
       .info span { display: inline-flex; align-items: center; gap: 4px; }
@@ -108,12 +114,48 @@ export class SmLoadDetail extends LitElement {
         title: t("detail.device"),
         rows: [
           {
-            icon: "mdi:power-socket-eu", title: t("f.switch_entity"), show: (l) => !isEv(l),
+            icon: "mdi:home-battery-outline", title: t("f.bat_soc_entity"), show: isBat,
+            secondary: (l) => entityName(h, l.bat_soc_entity), value: (_l, lv) => (lv?.soc != null ? `${Math.round(lv.soc)}%` : ""),
+            fields: [
+              { key: "bat_soc_entity", kind: "entity", domains: ["sensor"] },
+              { key: "bat_capacity_kwh", kind: "number", unit: "kWh", step: 0.1 },
+            ],
+          },
+          {
+            icon: "mdi:meter-electric-outline", title: t("f.bat_power_entity"), show: isBat,
+            secondary: (l) => `${entityName(h, l.bat_power_entity)} · ${t(`f.bat_sign.${l.bat_power_sign}`)}`,
+            value: (l) => entityValue(h, l.bat_power_entity),
+            fields: [
+              { key: "bat_power_entity", kind: "entity", domains: ["sensor"], helper: t("f.bat_power_entity.help") },
+              { key: "bat_power_sign", kind: "select", options: signOpts() },
+            ],
+          },
+          {
+            icon: "mdi:tune-variant", title: t("detail.bat_control"), show: isBat,
+            secondary: (l) =>
+              l.bat_setpoint_entity
+                ? entityName(h, l.bat_setpoint_entity)
+                : l.bat_charge_entity || l.bat_discharge_entity
+                  ? `${entityName(h, l.bat_charge_entity)} / ${entityName(h, l.bat_discharge_entity)}`
+                  : t("detail.not_set"),
+            value: (_l, lv) => (lv?.setpoint_w != null ? fmtW(lv.setpoint_w) : ""),
+            fields: [
+              { key: "bat_setpoint_entity", kind: "entity", domains: ["number", "input_number"], helper: t("f.bat_setpoint_entity.help") },
+              { key: "bat_setpoint_sign", kind: "select", options: signOpts(), show: (d) => !!d.bat_setpoint_entity },
+              { key: "bat_charge_entity", kind: "entity", domains: ["number", "input_number"], show: (d) => !d.bat_setpoint_entity },
+              { key: "bat_discharge_entity", kind: "entity", domains: ["number", "input_number"], show: (d) => !d.bat_setpoint_entity },
+              { key: "bat_mode_entity", kind: "entity", domains: ["select", "input_select"], helper: t("f.bat_mode_entity.help") },
+              { key: "bat_mode_remote_option", kind: "text", show: (d) => !!d.bat_mode_entity },
+              { key: "bat_mode_auto_option", kind: "text", show: (d) => !!d.bat_mode_entity },
+            ],
+          },
+          {
+            icon: "mdi:power-socket-eu", title: t("f.switch_entity"), show: isSwitch,
             secondary: (l) => entityName(h, l.switch_entity), value: (l) => onOff(h, l.switch_entity),
             fields: [{ key: "switch_entity", kind: "entity", domains: ["switch", "input_boolean", "light"] }],
           },
           {
-            icon: "mdi:flash", title: t("f.nominal_power_w"), show: (l) => !isEv(l),
+            icon: "mdi:flash", title: t("f.nominal_power_w"), show: isSwitch,
             secondary: () => t("detail.nominal_help"), value: (l) => fmtW(l.nominal_power_w),
             fields: [{ key: "nominal_power_w", kind: "number", unit: "W", step: 50 }, { key: "full_threshold_w", kind: "number", unit: "W" }],
           },
@@ -131,12 +173,12 @@ export class SmLoadDetail extends LitElement {
             ],
           },
           {
-            icon: "mdi:meter-electric-outline", title: t("detail.power_sensor"),
+            icon: "mdi:meter-electric-outline", title: t("detail.power_sensor"), show: notBat,
             secondary: (l) => entityName(h, l.power_entity), value: (l) => entityValue(h, l.power_entity),
             fields: [{ key: "power_entity", kind: "entity", domains: ["sensor"], helper: t("f.power_entity.help") }],
           },
           {
-            icon: "mdi:thermometer", title: t("detail.temp_sensor"), show: (l) => !isEv(l),
+            icon: "mdi:thermometer", title: t("detail.temp_sensor"), show: isSwitch,
             secondary: (l) => entityName(h, l.temperature_entity),
             value: (l) => (l.max_temperature != null ? `${entityValue(h, l.temperature_entity)} · max ${l.max_temperature} °C` : entityValue(h, l.temperature_entity)),
             fields: [
@@ -152,6 +194,46 @@ export class SmLoadDetail extends LitElement {
               { key: "ev_soc_entity", kind: "entity", domains: ["sensor"] },
               { key: "ev_charge_limit_entity", kind: "entity", domains: ["sensor", "number", "input_number"], show: (l) => !isTesla(l) },
             ],
+          },
+        ],
+      },
+      {
+        title: t("f.section.battery"),
+        show: isBat,
+        rows: [
+          {
+            icon: "mdi:battery-charging-high", title: t("detail.bat_power"),
+            secondary: () => t("detail.bat_power_sub"),
+            value: (l) => `↑ ${fmtW(l.bat_max_charge_w)} · ↓ ${fmtW(l.bat_max_discharge_w)}`,
+            fields: [
+              { key: "bat_max_charge_w", kind: "number", unit: "W", step: 100 },
+              { key: "bat_max_discharge_w", kind: "number", unit: "W", step: 100 },
+              { key: "bat_deadband_w", kind: "number", unit: "W", step: 10, helper: t("f.bat_deadband_w.help") },
+            ],
+          },
+          {
+            icon: "mdi:battery-10", title: t("detail.bat_limits"),
+            secondary: (l) => t("detail.bat_limits_sub").replace("{min}", pct(l.bat_min_soc)).replace("{max}", pct(l.bat_max_soc)),
+            value: (l) => `${pct(l.bat_min_soc)} – ${pct(l.bat_max_soc)}`,
+            fields: [
+              { key: "bat_min_soc", kind: "number", unit: "%", helper: t("f.bat_min_soc.help") },
+              { key: "bat_max_soc", kind: "number", unit: "%" },
+              { key: "bat_target_soc", kind: "number", unit: "%", helper: t("f.bat_target_soc.help") },
+            ],
+          },
+          {
+            icon: "mdi:home-lightning-bolt-outline", title: t("f.bat_discharge_for"), secondary: () => t("detail.bat_for_help"),
+            value: (l) => t(`f.bat_for.${l.bat_discharge_for}`),
+            fields: [{
+              key: "bat_discharge_for", kind: "select",
+              options: ["house", "house_switch", "all"].map((v) => ({ value: v, label: t(`f.bat_for.${v}`) })),
+            }],
+          },
+          { icon: "mdi:transmission-tower", title: t("f.bat_peak_support"), secondary: () => t("detail.bat_peak_help"), toggle: "bat_peak_support" },
+          {
+            icon: "mdi:battery-lock-outline", title: t("f.bat_peak_min_soc"), show: (l) => !!l.bat_peak_support,
+            secondary: () => t("detail.bat_peak_min_help"), value: (l) => pct(l.bat_peak_min_soc),
+            fields: [{ key: "bat_peak_min_soc", kind: "number", unit: "%" }],
           },
         ],
       },
@@ -190,6 +272,7 @@ export class SmLoadDetail extends LitElement {
       },
       {
         title: t("detail.behaviour"),
+        show: notBat,
         rows: [
           {
             icon: "mdi:timer-play-outline", title: t("detail.start_stop"),
@@ -224,19 +307,22 @@ export class SmLoadDetail extends LitElement {
           {
             icon: "mdi:weather-night", title: t("detail.night_when"),
             secondary: (l) =>
-              isEv(l) && (l.ev_soc_entity || isTesla(l))
+              isBat(l)
+                ? t("detail.night_when_bat").replace("{soc}", String(l.bat_target_soc))
+                : isEv(l) && (l.ev_soc_entity || isTesla(l))
                 ? t("detail.night_when_soc").replace("{soc}", String(l.ev_target_soc))
                 : l.night_min_temperature != null
                   ? t("detail.night_when_temp").replace("{t}", String(l.night_min_temperature))
                   : t("detail.night_when_kwh").replace("{kwh}", String(l.night_min_solar_kwh)),
             fields: [
-              { key: "night_min_solar_kwh", kind: "number", unit: "kWh", step: 0.1, show: (l) => !(isEv(l) && (l.ev_soc_entity || isTesla(l))) },
-              { key: "night_min_temperature", kind: "number", unit: "°C", nullable: true, show: (l) => !isEv(l) },
+              { key: "night_min_solar_kwh", kind: "number", unit: "kWh", step: 0.1, show: (l) => isSwitch(l) || (isEv(l) && !(l.ev_soc_entity || isTesla(l))) },
+              { key: "night_min_temperature", kind: "number", unit: "°C", nullable: true, show: isSwitch },
+              { key: "bat_target_soc", kind: "number", unit: "%", show: isBat },
               { key: "ev_target_soc", kind: "number", unit: "%", show: isEv },
             ],
           },
           {
-            icon: "mdi:battery-arrow-up-outline", title: t("detail.night_amount"), show: (l) => !isEv(l),
+            icon: "mdi:battery-arrow-up-outline", title: t("detail.night_amount"), show: isSwitch,
             value: (l) => (l.night_target_kwh ? fmtKwh(l.night_target_kwh, 1) : t("detail.until_full")),
             fields: [{ key: "night_target_kwh", kind: "number", unit: "kWh", step: 0.1 }],
           },
@@ -249,7 +335,7 @@ export class SmLoadDetail extends LitElement {
       },
       {
         title: t("f.section.legionella"),
-        show: (l) => !isEv(l),
+        show: isSwitch,
         rows: [
           { icon: "mdi:bacteria-outline", title: t("f.legionella_enabled"), secondary: () => t("f.legionella.hint"), toggle: "legionella_enabled" },
           {
@@ -301,11 +387,12 @@ export class SmLoadDetail extends LitElement {
   private _hero() {
     const l = this.load;
     const lv = this.live;
-    const [v, u] = splitW(lv?.power_w ?? 0);
+    const [v, u] = splitW(isBat(l) ? Math.abs(lv?.power_w ?? 0) : lv?.power_w ?? 0);
+    const dir = isBat(l) && lv ? (lv.power_w > 1 ? "mdi:arrow-up-bold" : lv.power_w < -1 ? "mdi:arrow-down-bold" : "") : "";
     const reason = lv?.reason ?? "idle";
     const tone = reasonTone(reason);
-    const icon = l.icon || (isEv(l) ? "mdi:ev-station" : "mdi:water-boiler");
-    const nominal = isEv(l) ? l.ev_max_current * 230 * l.ev_phases : l.nominal_power_w;
+    const icon = l.icon || defaultIcon(l.type);
+    const nominal = isEv(l) ? l.ev_max_current * 230 * l.ev_phases : isBat(l) ? Math.max(l.bat_max_charge_w, l.bat_max_discharge_w) : l.nominal_power_w;
     const share = lv?.kwh_today ? (lv.solar_kwh_today ?? 0) / lv.kwh_today : null;
     return html`<div class="card hero">
       <div class="hero-head">
@@ -319,21 +406,22 @@ export class SmLoadDetail extends LitElement {
           <div class="hero-sub"><span class="status ${tone}">${t(`reason.${reason}`)}</span> · ${t(`type.${l.type}`)}</div>
         </div>
       </div>
-      <div class="big"><span class="v">${v}</span><span class="u">${u}</span></div>
+      <div class="big">${dir ? html`<ha-icon class="dir" .icon=${dir}></ha-icon>` : nothing}<span class="v">${v}</span><span class="u">${u}</span></div>
       <sm-sparkline .points=${this.spark} .max=${nominal} .height=${90} .label=${t("detail.last_6h")}></sm-sparkline>
       <div class="info">
         ${lv?.temperature != null ? html`<span><ha-icon icon="mdi:thermometer"></ha-icon>${lv.temperature.toFixed(1)} °C</span>` : nothing}
         ${lv?.soc != null ? html`<span><ha-icon icon="mdi:battery-charging"></ha-icon>${Math.round(lv.soc)}%</span>` : nothing}
         ${lv?.current_a != null && isEv(l) ? html`<span><ha-icon icon="mdi:current-ac"></ha-icon>${Math.round(lv.current_a)} A</span>` : nothing}
-        <span><ha-icon icon="mdi:lightning-bolt"></ha-icon>${fmtKwh(lv?.kwh_today ?? 0, 1)} ${t("load.today")}</span>
+        <span><ha-icon icon="mdi:lightning-bolt"></ha-icon>${fmtKwh(lv?.kwh_today ?? 0, 1)} ${isBat(l) ? t("load.charged_today") : t("load.today")}</span>
+        ${isBat(l) ? html`<span><ha-icon icon="mdi:home-export-outline"></ha-icon>${fmtKwh(lv?.discharge_kwh_today ?? 0, 1)} ${t("load.discharged")}</span>` : nothing}
         ${share !== null ? html`<span><ha-icon icon="mdi:white-balance-sunny"></ha-icon>${Math.round(share * 100)}% ${t("load.from_solar")}</span>` : nothing}
       </div>
       <hr />
       <div class="mode">
         <div class="l">${t("f.mode")}</div>
-        <sm-segmented .options=${modeOptions()} .value=${l.mode}
+        <sm-segmented .options=${modeOptions(l.type)} .value=${l.mode}
           @value-changed=${(e: CustomEvent) => this.dispatchEvent(new CustomEvent("set-mode", { detail: { id: l.id, mode: e.detail.value }, bubbles: true, composed: true }))}></sm-segmented>
-        <div class="d">${t(`mode.${l.mode}.desc`)}</div>
+        <div class="d">${t(`${modeKey(l.mode, l.type)}.desc`)}</div>
       </div>
     </div>`;
   }

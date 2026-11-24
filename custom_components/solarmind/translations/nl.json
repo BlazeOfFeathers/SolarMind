@@ -66,7 +66,10 @@
           "stop_delay": "Stopt zo dadelijk",
           "unavailable": "Niet beschikbaar",
           "disabled": "Uitgeschakeld",
-          "not_connected": "Niet ingeplugd"
+          "not_connected": "Niet ingeplugd",
+          "self_consumption": "Dekt het huis",
+          "reserve": "Reserve bereikt",
+          "battery_full": "Batterij vol"
         }
       },
       "time_to_full": {
@@ -80,6 +83,7 @@
       "mode": {
         "name": "Modus",
         "state": {
+          "self": "Zelfverbruik (batterij)",
           "solar": "Enkel zon",
           "solar_night": "Zon + nachtaanvulling",
           "on": "Altijd aan",

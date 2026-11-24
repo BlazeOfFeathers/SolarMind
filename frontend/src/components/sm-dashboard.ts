@@ -4,6 +4,7 @@ import { reorderLoads } from "../api";
 import { t } from "../i18n";
 import { cardStyles, fmtW, tokens } from "../styles/tokens";
 import type { Hass, Live, Load } from "../types";
+import { defaultIcon } from "./common";
 import "./sm-load-card";
 import "./shared/sm-list-row";
 
@@ -106,7 +107,7 @@ export class SmDashboard extends LitElement {
           @dragstart=${() => (this._dragId = l.id)} @dragend=${() => (this._dragId = null)}
           @dragover=${(e: DragEvent) => e.preventDefault()} @drop=${() => this._drop(l.id)}>
           <ha-icon class="handle" icon="mdi:drag"></ha-icon>
-          <sm-list-row .icon=${l.icon || (l.type === "ev" ? "mdi:ev-station" : "mdi:water-boiler")} .heading=${`${i + 1}. ${l.name}`}
+          <sm-list-row .icon=${l.icon || defaultIcon(l.type)} .heading=${`${i + 1}. ${l.name}`}
             .secondary=${t(`mode.${l.mode}`)}>
             <button class="icon" ?disabled=${i === 0} @click=${() => this._move(l.id, -1)}><ha-icon icon="mdi:arrow-up"></ha-icon></button>
             <button class="icon" ?disabled=${i === this.loads.length - 1} @click=${() => this._move(l.id, 1)}><ha-icon icon="mdi:arrow-down"></ha-icon></button>

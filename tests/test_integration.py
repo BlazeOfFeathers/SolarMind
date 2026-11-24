@@ -94,3 +94,56 @@ def test_versions_match():
 
     manifest = json.loads((Path(__file__).parents[1] / "custom_components/solarmind/manifest.json").read_text())
     assert manifest["version"] == VERSION
+
+
+async def test_battery_flow(hass: HomeAssistant, hass_ws_client) -> None:
+    """Battery charges on surplus, covers the house at night, and is released when disabled."""
+    await async_setup_component(hass, "http", {})
+    await async_setup_component(hass, "websocket_api", {})
+    hass.config.components.add("frontend")
+    with patch("custom_components.solarmind._async_register_panel"):
+        entry = await _setup(hass)
+        set_value = async_mock_service(hass, "number", "set_value")
+        select_option = async_mock_service(hass, "select", "select_option")
+        hass.states.async_set("sensor.bat_soc", "50", {"unit_of_measurement": "%"})
+        hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})
+        hass.states.async_set("number.bat_setpoint", "0", {"unit_of_measurement": "kW", "min": -5, "max": 5})
+        hass.states.async_set("select.bat_mode", "auto")
+        client = await hass_ws_client(hass)
+        await client.send_json({"id": 1, "type": "solarmind/settings/save", "settings": {"grid_power_entity": "sensor.grid"}})
+        assert (await client.receive_json())["success"]
+        await client.send_json({"id": 2, "type": "solarmind/loads/save", "load": {
+            "name": "Batterij", "type": "battery", "bat_soc_entity": "sensor.bat_soc", "bat_power_entity": "sensor.bat_power",
+            "bat_setpoint_entity": "number.bat_setpoint", "bat_mode_entity": "select.bat_mode",
+            "bat_mode_remote_option": "remote", "bat_mode_auto_option": "auto"}})
+        res = await client.receive_json()
+        assert res["success"], res
+        load = res["result"]["load"]
+        assert load["mode"] == "self"
+        await hass.async_block_till_done()
+        assert hass.states.get("select.batterij_mode").attributes["options"] == ["self", "solar", "solar_night", "on", "off"]
+
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        # 2500 W surplus, setpoint entity in kW.
+        assert select_option[-1].data == {"entity_id": "select.bat_mode", "option": "remote"}
+        assert set_value[-1].data == {"entity_id": "number.bat_setpoint", "value": 2.5}
+        assert coordinator.live["loads"][load["id"]]["reason"] == "solar"
+
+        # Evening: house imports 700 W, battery covers it.
+        hass.states.async_set("sensor.grid", "700", {"unit_of_measurement": "W"})
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert set_value[-1].data["value"] == -0.7
+        assert coordinator.live["loads"][load["id"]]["reason"] == "self_consumption"
+
+        # Disabled: handed back to the inverter.
+        await client.send_json({"id": 3, "type": "solarmind/loads/save", "load": {**load, "enabled": False}})
+        assert (await client.receive_json())["success"]
+        hass.states.async_set("select.bat_mode", "remote")
+        coordinator.rebuild_drivers()
+        coordinator.drivers[load["id"]]._remote = True
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert select_option[-1].data == {"entity_id": "select.bat_mode", "option": "auto"}

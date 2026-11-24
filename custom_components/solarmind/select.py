@@ -9,8 +9,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, MODES
+from .const import DOMAIN
 from .entity import SolarMindLoadEntity
+from .store import modes_for
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -19,10 +20,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class LoadModeSelect(SolarMindLoadEntity, SelectEntity):
-    _attr_options = MODES
-
     def __init__(self, coordinator, load: dict[str, Any]) -> None:
         super().__init__(coordinator, load, "mode")
+        self._attr_options = modes_for(load)
 
     @property
     def current_option(self) -> str | None:
