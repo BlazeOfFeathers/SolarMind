@@ -31,9 +31,9 @@ async def test_read_and_command(hass: HomeAssistant, aioclient_mock) -> None:
     changed = await drv.async_apply(st, Decision("ev", True, current_a=8))
     assert changed
     calls = [(c[0], str(c[1])) for c in aioclient_mock.mock_calls]
-    assert ("POST", f"{BASE}/command/set_charging_amps") in calls
-    assert ("POST", f"{BASE}/command/charge_start") in calls
-    amps_call = next(c for c in aioclient_mock.mock_calls if str(c[1]).endswith("set_charging_amps"))
+    assert ("POST", f"{BASE}/command/set_charging_amps?wait=true") in calls
+    assert ("POST", f"{BASE}/command/charge_start?wait=true") in calls
+    amps_call = next(c for c in aioclient_mock.mock_calls if "set_charging_amps" in str(c[1]))
     assert amps_call[2] == {"charging_amps": 8}
 
 
@@ -72,3 +72,21 @@ async def test_asleep_without_state_wakes_once(hass: HomeAssistant, aioclient_mo
     st = await drv.async_read()
     assert st.available and st.soc == 50
     assert len([c for c in aioclient_mock.mock_calls if "wakeup" in str(c[1])]) == 1
+
+
+async def test_refused_command_is_reported(hass: HomeAssistant, aioclient_mock) -> None:
+    """A refused charge_start must not count as a switch (no minimum-off-time loop) and is shown."""
+    aioclient_mock.get(
+        f"{BASE}/vehicle_data",
+        json={"response": {"response": {"charge_state": {"charging_state": "Stopped", "battery_level": 59}}}},
+    )
+    aioclient_mock.post(
+        f"{BASE}/command/charge_start", params={"wait": "true"},
+        status=500, json={"response": {"result": False, "reason": "car could not execute command: disconnected"}},
+    )
+    drv = TeslaBleProxyDriver(hass, _cfg())
+    st = await drv.async_read()
+    assert st.car_state == "Stopped"
+    changed = await drv.async_apply(st, Decision("ev", True))
+    assert changed is False
+    assert drv.last_error == "charge_start: car could not execute command: disconnected"

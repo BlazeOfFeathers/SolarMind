@@ -50,6 +50,8 @@ export interface LiveLoad {
   eta_limit_s?: number | null;
   eta_estimated?: boolean;
   eta_source?: "car" | "calc" | null;
+  car_state?: string | null;
+  driver_error?: string | null;
 }
 
 export interface Live {

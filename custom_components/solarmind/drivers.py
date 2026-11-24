@@ -26,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 RESEND_AFTER_S = 60
 TESLA_POLL_S = 60
 TESLA_TIMEOUT_S = 30
+TESLA_COMMAND_TIMEOUT_S = 45  # commands wait for the car's answer (wait=true)
 TESLA_WAKE_TIMEOUT_S = 60
 TESLA_WAKE_RETRY_S = 600  # without any known state, wake the car at most every 10 min to read it
 BAD_STATES = (STATE_UNAVAILABLE, STATE_UNKNOWN, None)
@@ -78,6 +79,7 @@ class BaseDriver:
         self.cfg = cfg
         self._last_cmd: tuple[Any, ...] | None = None
         self._last_cmd_ts = 0.0
+        self.last_error: str | None = None  # last failed command, shown in the panel
 
     def _should_send(self, cmd: tuple[Any, ...]) -> bool:
         now = time.monotonic()
@@ -215,20 +217,33 @@ class TeslaBleProxyDriver(BaseDriver):
         return False
 
     async def _command(self, command: str, body: dict[str, Any] | None = None) -> bool:
+        """Send a command and wait for the car's answer, so a refusal is not mistaken for success."""
         session = async_get_clientsession(self.hass)
         try:
             async with session.post(
                 f"{self._base}/command/{command}",
+                params={"wait": "true"},
                 json=body or {},
-                timeout=aiohttp.ClientTimeout(total=TESLA_TIMEOUT_S),
+                timeout=aiohttp.ClientTimeout(total=TESLA_COMMAND_TIMEOUT_S),
             ) as resp:
-                ok = resp.status < 300
-                if not ok:
-                    _LOGGER.warning("Tesla BLE proxy %s failed: HTTP %s", command, resp.status)
-                return ok
+                status = resp.status
+                try:
+                    data = await resp.json(content_type=None)
+                except ValueError:
+                    data = None
         except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.warning("Tesla BLE proxy %s failed: %s", command, err)
+            self.last_error = f"{command}: {err or type(err).__name__}"
+            _LOGGER.warning("Tesla BLE proxy %s failed: %s", command, self.last_error)
             return False
+        result = _find_key(data, "result") if isinstance(data, dict) else None
+        reason = _find_key(data, "reason") if isinstance(data, dict) else None
+        if status < 300 and result is not False:
+            self.last_error = None
+            _LOGGER.debug("Tesla BLE proxy %s OK %s", command, body or "")
+            return True
+        self.last_error = f"{command}: {reason or f'HTTP {status}'}"
+        _LOGGER.warning("Tesla BLE proxy %s refused (HTTP %s): %s", command, status, reason or data)
+        return False
 
     async def async_read(self) -> LoadState:
         await self._poll()
@@ -258,6 +273,7 @@ class TeslaBleProxyDriver(BaseDriver):
             plugged=plugged,
             charge_limit=_float_or_none(cs.get("charge_limit_soc")),
             car_time_to_limit_h=_car_hours_to_limit(cs),
+            car_state=str(cs.get("charging_state") or "") or None,
         )
 
     async def async_apply(self, st: LoadState, dec: Decision) -> bool:
@@ -275,7 +291,10 @@ class TeslaBleProxyDriver(BaseDriver):
                 changed = True
                 if self._charge_state is not None:
                     self._charge_state["charging_state"] = "Charging" if dec.on else "Stopped"
-            self._last_poll = 0.0  # re-read soon
+                # Re-read in ~20 s: the car needs a moment before it reports the new state.
+                self._last_poll = time.monotonic() - TESLA_POLL_S + 20
+            else:
+                self._last_poll = 0.0  # re-read right away
         return changed
 
 
