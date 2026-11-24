@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.2.4"
+VERSION = "0.2.5"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
@@ -67,6 +67,7 @@ R_NOT_CONNECTED = "not_connected"
 R_SELF_CONSUMPTION = "self_consumption"  # battery covers the house
 R_RESERVE = "reserve"  # battery at its minimum SoC
 R_BAT_FULL = "battery_full"
+R_WAIT_SUN = "forecast_wait"  # EV minimum power waits for the forecast sun
 
 REASONS = [
     R_IDLE,
@@ -90,6 +91,7 @@ REASONS = [
     R_SELF_CONSUMPTION,
     R_RESERVE,
     R_BAT_FULL,
+    R_WAIT_SUN,
 ]
 
 # Grid sensor sign conventions
@@ -107,6 +109,13 @@ DEFAULT_SETTINGS: dict = {
     "pv_power_entity": None,
     "pv_forecast_today_entity": None,
     "pv_forecast_tomorrow_entity": None,
+    "pv_forecast_remaining_entity": None,  # sun still expected today (kWh); else today - produced
+    # Forecast planning (control/forecast.py)
+    "forecast_ev_priority": False,  # car before boilers while the sun to come fills the boilers anyway
+    "forecast_ev_floor_pause": False,  # EV minimum power waits for the sun when enough is expected
+    "forecast_ev_floor_kwh": 5.0,  # ... at least this much usable sun still expected today
+    "forecast_factor_pct": 80,  # count on this share of the forecast (forecasts tend to be optimistic)
+    "forecast_house_kwh": 3.0,  # sun the house itself still uses today
     # Capacity tariff peak guard (Belgium: monthly max of 15-min average import).
     "peak_guard_enabled": True,
     "peak_limit_w": 2500,  # never let the quarter average exceed this (min. billed is 2.5 kW)

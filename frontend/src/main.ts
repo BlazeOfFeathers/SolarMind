@@ -295,7 +295,7 @@ export class SolarMindPanel extends LitElement {
         return html`<sm-analytics .hass=${this.hass} .loads=${c.loads} .loadId=${this._analyticsLoad} .peakLimit=${this._live?.site?.peak_limit_w ?? null}
           @analytics-load=${(e: CustomEvent) => (this._analyticsLoad = e.detail.id)}></sm-analytics>`;
       case "settings":
-        return html`<sm-settings .hass=${this.hass} .settings=${c.settings} .narrow=${this.narrow}
+        return html`<sm-settings .hass=${this.hass} .settings=${c.settings} .site=${this._live?.site} .narrow=${this.narrow}
           @saving=${() => this._flashSave("saving")}
           @settings-saved=${(e: CustomEvent) => { this._config = { ...c, settings: { ...c.settings, ...e.detail.settings } }; this._flashSave("saved"); }}
           @save-error=${() => this._flashSave("error")}></sm-settings>`;

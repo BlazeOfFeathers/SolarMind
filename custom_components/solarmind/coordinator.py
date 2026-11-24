@@ -34,6 +34,7 @@ from .control.allocator import (
     evaluate_night_need,
 )
 from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, capacity_from_car_estimate, time_to_soc_s
+from .control.forecast import ForecastPlan, apply_order, make_plan, remaining_today
 from .control.peak import PeakTracker, month_key_of
 from .drivers import BaseDriver, make_driver, read_float
 from .history import HistoryData, LoadSample
@@ -102,6 +103,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.peak = PeakTracker()
         self._last_ts: float | None = None
         self._was_night: bool | None = None
+        self.plan = ForecastPlan()
         self._last_prune_day = ""
         self.live: dict[str, Any] = {"site": {}, "loads": {}}
         self._listeners_ws: set[Any] = set()
@@ -233,8 +235,17 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._base_hist.popleft()
             if self._base_hist:
                 site.base_avg_w = sum(b for _, b in self._base_hist) / len(self._base_hist)
-            result = allocate(site, loads, states, self.runtimes)
-            result_decisions = result.decisions
+            house_today = self.history.days.get(local.strftime("%Y-%m-%d"), {}).get("house", {})
+            remaining = remaining_today(
+                read_float(self.hass, settings.get("pv_forecast_remaining_entity")),
+                read_float(self.hass, settings.get("pv_forecast_today_entity")),
+                house_today.get("pv_kwh") if settings.get("pv_power_entity") else None,
+            )
+            self.plan = make_plan(settings, loads, states, self.runtimes, remaining, is_night, self.plan)
+            site.ev_floor_paused = self.plan.ev_floor_paused
+            result = allocate(site, apply_order(loads, self.plan), states, self.runtimes)
+            by_id = {d.load_id: d for d in result.decisions}
+            result_decisions = [by_id[cfg["id"]] for cfg in loads]
             base_w, surplus_w, headroom = result.base_w, result.surplus_w, result.grid_headroom_w
             self._base_hist.append((now, base_w))
 
@@ -350,6 +361,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "month_peak_w": round(self.peak.month_peak_w, 1),
                 "month_peak_ts": self.peak.month_peak_ts or None,
                 "forecast_tomorrow_kwh": forecast_tomorrow,
+                "forecast": self.plan.to_dict(),
                 "today": day.get("house", {}),
             },
             "loads": loads_live,

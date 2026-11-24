@@ -94,6 +94,7 @@ export class SmDashboard extends LitElement {
       <span class="pill"><ha-icon class=${peakTone} icon="mdi:chart-bell-curve-cumulative"></ha-icon>${t("site.peak_now")}
         <b>${fmtW(s.quarter_average_w)}</b>&nbsp;/ ${fmtW(s.peak_limit_w)}</span>
       <span class="pill"><ha-icon icon="mdi:calendar-month"></ha-icon>${t("site.month_peak")} <b>${fmtW(s.month_peak_w)}</b></span>
+      ${s.forecast?.ev_first ? html`<span class="pill"><ha-icon class="solar" icon="mdi:car-electric"></ha-icon>${t("site.ev_first")}</span>` : nothing}
       ${s.in_night ? html`<span class="pill"><ha-icon icon="mdi:weather-night"></ha-icon>${t("site.night")}</span>` : nothing}
     </div>`;
   }

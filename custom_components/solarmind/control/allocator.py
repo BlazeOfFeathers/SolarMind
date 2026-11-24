@@ -58,6 +58,7 @@ from ..const import (
     R_UNAVAILABLE,
     R_WAIT_START,
     R_WAIT_STOP,
+    R_WAIT_SUN,
 )
 
 INF = float("inf")
@@ -127,6 +128,7 @@ class SiteState:
     voltage: float = 230.0
     base_avg_w: float | None = None  # house load without managed loads, averaged (~1.5 min)
     smooth_bonus_w: float = 0.0  # set by allocate(): extra surplus the average shows vs. now
+    ev_floor_paused: bool = False  # forecast: enough sun still coming, no grid top-up for the EV minimum
 
 
 @dataclass
@@ -506,6 +508,9 @@ def _decide_solar(
             budget = solar_pool - margin
         amps = min(cfg["ev_max_current"], math.floor(budget / wpa))
         floor_amps = _ev_floor_amps(cfg, st, wpa)
+        waiting_for_sun = bool(floor_amps) and site.ev_floor_paused
+        if waiting_for_sun:
+            floor_amps = 0
         if floor_amps and amps < floor_amps:
             return _decide_ev_floor(cfg, st, rt, site, solar_pool, headroom, floor_amps, wpa)
         if amps < cfg["ev_min_current"]:
@@ -519,7 +524,8 @@ def _decide_solar(
                 # Short dip (cloud): the averaged surplus still carries the minimum current.
                 dec = Decision(lid, True, current_a=int(cfg["ev_min_current"]), reason=R_SOLAR, allocated_w=min_w)
                 return _with_timing(cfg, st, rt, site.now, _rate_limit_current(cfg, st, rt, site.now, dec))
-            dec = _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_NO_SURPLUS))
+            idle_reason = R_WAIT_SUN if waiting_for_sun else R_NO_SURPLUS
+            dec = _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=idle_reason))
             if dec.on and st.is_on:
                 # Waiting to stop: run at the minimum meanwhile, never at the old (higher) current.
                 dec.current_a = int(cfg["ev_min_current"])

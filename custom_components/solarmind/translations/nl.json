@@ -69,7 +69,8 @@
           "not_connected": "Niet ingeplugd",
           "self_consumption": "Dekt het huis",
           "reserve": "Reserve bereikt",
-          "battery_full": "Batterij vol"
+          "battery_full": "Batterij vol",
+          "forecast_wait": "Wacht op voorspelde zon"
         }
       },
       "time_to_full": {

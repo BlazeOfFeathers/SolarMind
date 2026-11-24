@@ -11,10 +11,17 @@ import "./sm-logs";
 
 interface Category {
   id: string;
+  group: string;
   icon: string;
   fields: FieldSpec[];
-  summary: (s: Settings, hass: Hass) => string;
+  summary: (s: Settings, hass: Hass, site: Record<string, any>) => string;
 }
+
+/** Groups of the settings list, in this order. */
+const GROUPS = ["measure", "control", "info", "system"];
+
+const kwh = (v: number | null | undefined) => (v == null ? "–" : `${v.toFixed(1)} kWh`);
+const forecastOn = (d: Settings) => !!(d.forecast_ev_priority || d.forecast_ev_floor_pause);
 
 const opt = (key: string, values: string[]) => values.map((v) => ({ value: v, label: t(`s.${key}.${v}`) }));
 const ent = (hass: Hass, id?: string | null) => (id ? (hass.states[id]?.attributes.friendly_name ?? id) : t("detail.not_set"));
@@ -29,13 +36,9 @@ const notifyOptions = (hass: Hass) =>
     }));
 
 const categories = (hass: Hass): Category[] => [
+  // Meten
   {
-    id: "general", icon: "mdi:cog-outline",
-    fields: [{ key: "enabled", kind: "bool", helper: t("s.enabled.help") }],
-    summary: (s) => `${s.enabled ? t("s.enabled") : t("site.disabled")} · ${t("s.version").replace("{v}", __PANEL_VERSION__)}`,
-  },
-  {
-    id: "meter", icon: "mdi:meter-electric-outline",
+    id: "meter", group: "measure", icon: "mdi:meter-electric-outline",
     fields: [
       { key: "grid_mode", kind: "select", options: opt("grid_mode", ["single", "split"]) },
       { key: "grid_power_entity", kind: "entity", domains: ["sensor"], show: (d) => d.grid_mode !== "split" },
@@ -47,16 +50,37 @@ const categories = (hass: Hass): Category[] => [
     summary: (s, h) => ent(h, s.grid_mode === "split" ? s.grid_import_entity : s.grid_power_entity),
   },
   {
-    id: "pv", icon: "mdi:solar-power-variant",
-    fields: [
-      { key: "pv_power_entity", kind: "entity", domains: ["sensor"] },
-      { key: "pv_forecast_today_entity", kind: "entity", domains: ["sensor"], helper: t("s.forecast.help") },
-      { key: "pv_forecast_tomorrow_entity", kind: "entity", domains: ["sensor"] },
-    ],
+    id: "pv", group: "measure", icon: "mdi:solar-power-variant",
+    fields: [{ key: "pv_power_entity", kind: "entity", domains: ["sensor"], helper: t("s.pv_power_entity.help") }],
     summary: (s, h) => ent(h, s.pv_power_entity),
   },
+  // Slim sturen
   {
-    id: "peak", icon: "mdi:chart-bell-curve-cumulative",
+    id: "general", group: "control", icon: "mdi:power",
+    fields: [{ key: "enabled", kind: "bool", helper: t("s.enabled.help") }],
+    summary: (s) => (s.enabled ? t("s.enabled") : t("site.disabled")),
+  },
+  {
+    id: "forecast", group: "control", icon: "mdi:weather-partly-cloudy",
+    fields: [
+      { key: "pv_forecast_remaining_entity", kind: "entity", domains: ["sensor"], helper: t("s.pv_forecast_remaining_entity.help") },
+      { key: "pv_forecast_today_entity", kind: "entity", domains: ["sensor"], helper: t("s.pv_forecast_today_entity.help") },
+      { key: "pv_forecast_tomorrow_entity", kind: "entity", domains: ["sensor"], helper: t("s.pv_forecast_tomorrow_entity.help") },
+      { key: "forecast_ev_priority", kind: "bool", helper: t("s.forecast_ev_priority.help") },
+      { key: "forecast_ev_floor_pause", kind: "bool", helper: t("s.forecast_ev_floor_pause.help") },
+      { key: "forecast_ev_floor_kwh", kind: "number", unit: "kWh", step: 0.5, helper: t("s.forecast_ev_floor_kwh.help"), show: (d) => !!d.forecast_ev_floor_pause },
+      { key: "forecast_factor_pct", kind: "number", unit: "%", step: 5, helper: t("s.forecast_factor_pct.help"), show: forecastOn },
+      { key: "forecast_house_kwh", kind: "number", unit: "kWh", step: 0.5, helper: t("s.forecast_house_kwh.help"), show: forecastOn },
+    ],
+    summary: (s, h, site) => {
+      const f = site?.forecast;
+      if (f?.remaining_kwh != null) return t("s.forecast.summary").replace("{kwh}", kwh(f.remaining_kwh));
+      if (s.pv_forecast_remaining_entity || s.pv_forecast_today_entity) return ent(h, s.pv_forecast_remaining_entity || s.pv_forecast_today_entity);
+      return t("detail.not_set");
+    },
+  },
+  {
+    id: "peak", group: "control", icon: "mdi:chart-bell-curve-cumulative",
     fields: [
       { key: "peak_guard_enabled", kind: "bool", helper: t("s.peak.help") },
       { key: "peak_limit_w", kind: "number", unit: "W", step: 100, show: (d) => d.peak_guard_enabled },
@@ -66,15 +90,24 @@ const categories = (hass: Hass): Category[] => [
     summary: (s) => (s.peak_guard_enabled ? `${(s.peak_limit_w / 1000).toFixed(1)} kW` : t("detail.off")),
   },
   {
-    id: "night", icon: "mdi:weather-night",
+    id: "night", group: "control", icon: "mdi:weather-night",
     fields: [
       { key: "night_start", kind: "time" },
       { key: "night_end", kind: "time" },
     ],
     summary: (s) => `${s.night_start} – ${s.night_end}`,
   },
+  // Kosten en meldingen
   {
-    id: "notify", icon: "mdi:bell-outline",
+    id: "prices", group: "info", icon: "mdi:currency-eur",
+    fields: [
+      { key: "price_import", kind: "number", unit: "€/kWh", step: 0.01 },
+      { key: "price_export", kind: "number", unit: "€/kWh", step: 0.01 },
+    ],
+    summary: (s) => `€ ${s.price_import} / € ${s.price_export}`,
+  },
+  {
+    id: "notify", group: "info", icon: "mdi:bell-outline",
     fields: [
       { key: "notify_services", kind: "multi", options: notifyOptions(hass), helper: t("s.notify_services.help") },
       { key: "notify_peak", kind: "bool", helper: t("s.notify_peak.help") },
@@ -86,18 +119,11 @@ const categories = (hass: Hass): Category[] => [
       return n ? t("s.notify.summary").replace("{n}", String(n)) : t("detail.off");
     },
   },
+  // Systeem
   {
-    id: "prices", icon: "mdi:currency-eur",
-    fields: [
-      { key: "price_import", kind: "number", unit: "€/kWh", step: 0.01 },
-      { key: "price_export", kind: "number", unit: "€/kWh", step: 0.01 },
-    ],
-    summary: (s) => `€ ${s.price_import} / € ${s.price_export}`,
-  },
-  {
-    id: "debug", icon: "mdi:bug-outline",
+    id: "debug", group: "system", icon: "mdi:bug-outline",
     fields: [],
-    summary: () => t("s.cat.debug.summary"),
+    summary: () => `${t("s.cat.debug.summary")} · ${t("s.version").replace("{v}", __PANEL_VERSION__)}`,
   },
 ];
 
@@ -106,6 +132,7 @@ const categories = (hass: Hass): Category[] => [
 export class SmSettings extends LitElement {
   @property({ attribute: false }) hass!: Hass;
   @property({ attribute: false }) settings!: Settings;
+  @property({ attribute: false }) site: Record<string, any> = {};
   @property({ type: Boolean }) narrow = false;
   @state() private _cat: string | null = null;
   @state() private _draft: Settings = {};
@@ -118,7 +145,13 @@ export class SmSettings extends LitElement {
       :host { display: block; }
       .md { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
       .md.single { grid-template-columns: 1fr; max-width: 720px; }
-      .nav { padding: 8px 0; }
+      .nav { padding: 4px 0 8px; }
+      .group { padding: 16px 16px 4px; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
+      .group + sm-list-row { margin-top: 0; }
+      .nav hr { border: none; border-top: 1px solid var(--sm-border); margin: 8px 0 0; }
+      .plan { margin: 0 0 16px; padding: 12px 14px; border-radius: var(--sm-radius); background: var(--sm-fill); font-size: 14px; line-height: 1.55; }
+      .plan b { font-weight: 500; }
+      .plan .on { color: var(--sm-solar); }
       sm-list-row.sel { background: var(--sm-fill-primary); }
       .detail .card-body { padding-top: 4px; }
       .back { display: flex; align-items: center; gap: 4px; }
@@ -153,6 +186,19 @@ export class SmSettings extends LitElement {
     }
   }
 
+  /** What the forecast planning decides right now. */
+  private _plan() {
+    const f = this.site?.forecast;
+    if (!f || f.remaining_kwh == null) return html`<div class="plan">${t("s.plan.none")}</div>`;
+    const yes = (on: boolean) => html`<b class=${on ? "on" : ""}>${on ? t("s.plan.yes") : t("s.plan.no")}</b>`;
+    return html`<div class="plan">
+      ${t("s.plan.remaining")} <b>${kwh(f.remaining_kwh)}</b>, ${t("s.plan.usable")} <b>${kwh(f.usable_kwh)}</b><br />
+      ${t("s.plan.boilers")} <b>${kwh(f.boiler_need_kwh)}</b><br />
+      ${this._draft.forecast_ev_priority ? html`${t("s.plan.ev_first")} ${yes(f.ev_first)}<br />` : ""}
+      ${this._draft.forecast_ev_floor_pause ? html`${t("s.plan.floor_paused")} ${yes(f.ev_floor_paused)}` : ""}
+    </div>`;
+  }
+
   render() {
     const cats = categories(this.hass);
     const cat = cats.find((c) => c.id === this._cat);
@@ -161,9 +207,12 @@ export class SmSettings extends LitElement {
     return html`<div class="md ${this.narrow ? "single" : ""}">
       ${showNav
         ? html`<div class="card nav">
-            ${cats.map(
-              (c) => html`<sm-list-row class=${c.id === this._cat && !this.narrow ? "sel" : ""} .icon=${c.icon} .heading=${t(`s.cat.${c.id}`)}
-                .secondary=${c.summary(this._draft, this.hass)} clickable @row-click=${() => (this._cat = c.id)}></sm-list-row>`,
+            ${GROUPS.map(
+              (g, i) => html`${i ? html`<hr />` : ""}<div class="group">${t(`s.group.${g}`)}</div>
+                ${cats.filter((c) => c.group === g).map(
+                  (c) => html`<sm-list-row class=${c.id === this._cat && !this.narrow ? "sel" : ""} .icon=${c.icon} .heading=${t(`s.cat.${c.id}`)}
+                    .secondary=${c.summary(this._draft, this.hass, this.site ?? {})} clickable @row-click=${() => (this._cat = c.id)}></sm-list-row>`,
+                )}`,
             )}
           </div>`
         : ""}
@@ -175,6 +224,7 @@ export class SmSettings extends LitElement {
             </div>
             <div class="card-body">
               <p class="desc">${t(`s.cat.${cat!.id}.desc`)}</p>
+              ${cat!.id === "forecast" ? this._plan() : ""}
               ${cat!.id === "debug"
                 ? html`<sm-logs .hass=${this.hass}></sm-logs>`
                 : html`<sm-form .hass=${this.hass} prefix="s" .fields=${cat!.fields} .data=${this._draft}
