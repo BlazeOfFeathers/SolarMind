@@ -3089,7 +3089,7 @@ const ds = ["measure", "control", "info", "system"], tt = (t) => t == null ? "�
     group: "system",
     icon: "mdi:bug-outline",
     fields: [],
-    summary: () => `${o("s.cat.debug.summary")} · ${o("s.version").replace("{v}", "0.2.5")}`
+    summary: () => `${o("s.cat.debug.summary")} · ${o("s.version").replace("{v}", "0.2.6")}`
   }
 ];
 let V = class extends z {
@@ -4114,8 +4114,8 @@ let O = class extends z {
     const t = this._config;
     return d`
       ${this._toolbar()}
-      ${t && t.version && t.version !== "0.2.5" ? d`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
-            <span>${o("panel.stale").replace("{server}", t.version).replace("{panel}", "0.2.5")}</span>
+      ${t && t.version && t.version !== "0.2.6" ? d`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
+            <span>${o("panel.stale").replace("{server}", t.version).replace("{panel}", "0.2.6")}</span>
             <button class="text" @click=${() => location.reload()}>${o("panel.reload")}</button></div>` : _}
       <main>${t ? this._content(t) : _}</main>
       ${this._adding ? d`<sm-dialog .heading=${o("loads.add")} .saveLabel=${o("load.add_save")} .busy=${this._addBusy} .error=${this._addError}
