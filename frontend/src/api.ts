@@ -18,3 +18,9 @@ export const getAnalytics = (hass: Hass, start: number, end: number, load_id: st
   hass.connection.sendMessagePromise<any>({ type: "solarmind/analytics", start, end, load_id });
 export const subscribeLive = (hass: Hass, cb: (live: Live) => void) =>
   hass.connection.subscribeMessage<Live>(cb, { type: "solarmind/subscribe" });
+export interface LogEntry { seq: number; ts: number; level: string; source: string; message: string }
+export interface LogsPayload { entries: LogEntry[]; verbose: boolean; max: number }
+export const getLogs = (hass: Hass) => hass.connection.sendMessagePromise<LogsPayload>({ type: "solarmind/logs" });
+export const clearLogs = (hass: Hass) => hass.connection.sendMessagePromise<LogsPayload>({ type: "solarmind/logs/clear" });
+export const setVerboseLogs = (hass: Hass, enabled: boolean) =>
+  hass.connection.sendMessagePromise<LogsPayload>({ type: "solarmind/logs/verbose", enabled });

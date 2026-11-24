@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PLATFORMS, VERSION
 from .coordinator import SolarMindCoordinator
+from .logbuffer import async_get_log_buffer
 from .store import SolarMindStore
 from .websocket_api import async_register_websocket_commands
 
@@ -22,13 +23,13 @@ PANEL_JS = "solarmind-panel.js"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    hass.data.setdefault(DOMAIN, {})
+    async_get_log_buffer(hass.data.setdefault(DOMAIN, {}))
     async_register_websocket_commands(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    hass.data.setdefault(DOMAIN, {})
+    async_get_log_buffer(hass.data.setdefault(DOMAIN, {}))
     if not hass.data[DOMAIN].get("ws_registered"):
         async_register_websocket_commands(hass)
     store = SolarMindStore(hass)

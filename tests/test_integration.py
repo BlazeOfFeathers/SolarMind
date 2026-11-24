@@ -147,3 +147,36 @@ async def test_battery_flow(hass: HomeAssistant, hass_ws_client) -> None:
         await coordinator.async_refresh()
         await hass.async_block_till_done()
         assert select_option[-1].data == {"entity_id": "select.bat_mode", "option": "auto"}
+
+
+async def test_logs_ws(hass: HomeAssistant, hass_ws_client) -> None:
+    """SolarMind's own log lines are buffered and served to the panel."""
+    import logging
+
+    await async_setup_component(hass, "http", {})
+    await async_setup_component(hass, "websocket_api", {})
+    hass.config.components.add("frontend")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    logging.getLogger("custom_components.solarmind.drivers").warning("test warning %s", 42)
+    logging.getLogger("homeassistant.other").warning("not ours")
+    logging.getLogger("custom_components.solarmind.coordinator").debug("hidden debug")
+
+    await client.send_json({"id": 1, "type": "solarmind/logs"})
+    res = (await client.receive_json())["result"]
+    msgs = [e["message"] for e in res["entries"]]
+    assert "test warning 42" in msgs
+    assert "not ours" not in msgs
+    assert "hidden debug" not in msgs
+    assert res["entries"][-1]["source"] == "drivers"
+
+    await client.send_json({"id": 2, "type": "solarmind/logs/verbose", "enabled": True})
+    assert (await client.receive_json())["result"]["verbose"]
+    logging.getLogger("custom_components.solarmind.coordinator").debug("shown debug")
+    await client.send_json({"id": 3, "type": "solarmind/logs/verbose", "enabled": False})
+    res = (await client.receive_json())["result"]
+    assert "shown debug" in [e["message"] for e in res["entries"]]
+
+    await client.send_json({"id": 4, "type": "solarmind/logs/clear"})
+    assert (await client.receive_json())["result"]["entries"] == []
