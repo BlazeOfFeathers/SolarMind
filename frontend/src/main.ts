@@ -43,6 +43,11 @@ export class SolarMindPanel extends LitElement {
     tokens,
     cardStyles,
     css`
+      .stale {
+        display: flex; align-items: center; gap: 10px; margin: 12px 16px 0; padding: 10px 14px; border-radius: 12px;
+        background: color-mix(in srgb, var(--sm-warn) 12%, transparent); color: var(--sm-warn-text); font-size: 14px;
+      }
+      .stale span { flex: 1; }
       :host {
         display: block; min-height: 100vh; background: var(--primary-background-color); color: var(--primary-text-color);
         font-family: var(--primary-font-family, Roboto, sans-serif); -webkit-font-smoothing: antialiased;
@@ -309,6 +314,11 @@ export class SolarMindPanel extends LitElement {
     const c = this._config;
     return html`
       ${this._toolbar()}
+      ${c && c.version && c.version !== __PANEL_VERSION__
+        ? html`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
+            <span>${t("panel.stale").replace("{server}", c.version).replace("{panel}", __PANEL_VERSION__)}</span>
+            <button class="text" @click=${() => location.reload()}>${t("panel.reload")}</button></div>`
+        : nothing}
       <main>${c ? this._content(c) : nothing}</main>
       ${this._adding
         ? html`<sm-dialog .heading=${t("loads.add")} .saveLabel=${t("load.add_save")} .busy=${this._addBusy} .error=${this._addError}

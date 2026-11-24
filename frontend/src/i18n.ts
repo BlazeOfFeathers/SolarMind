@@ -244,6 +244,9 @@ const nl: Record<string, string> = {
   "s.cat.night": "Nachtvenster",
   "s.cat.prices": "Prijzen",
   "s.cat.notify": "Meldingen",
+  "panel.stale": "SolarMind {server} is geïnstalleerd, maar je browser toont nog paneel {panel}.",
+  "panel.reload": "Herladen",
+  "s.version": "Versie {v}",
   "s.cat.notify.desc": "Pushmeldingen naar je gsm (Home Assistant-app) of een andere notify-dienst.",
   "s.notify_services": "Sturen naar",
   "s.notify_services.help": "Je gsm verschijnt hier zodra de Home Assistant-app erop geïnstalleerd en aangemeld is.",
@@ -341,6 +344,9 @@ const nl: Record<string, string> = {
 
 const en: Record<string, string> = {
   "s.cat.notify": "Notifications",
+  "panel.stale": "SolarMind {server} is installed, but your browser still shows panel {panel}.",
+  "panel.reload": "Reload",
+  "s.version": "Version {v}",
   "s.cat.notify.desc": "Push notifications to your phone (Home Assistant app) or another notify service.",
   "s.notify_services": "Send to",
   "s.notify_services.help": "Your phone shows up here once the Home Assistant app is installed and signed in.",

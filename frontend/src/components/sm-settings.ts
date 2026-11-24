@@ -31,7 +31,7 @@ const categories = (hass: Hass): Category[] => [
   {
     id: "general", icon: "mdi:cog-outline",
     fields: [{ key: "enabled", kind: "bool", helper: t("s.enabled.help") }],
-    summary: (s) => (s.enabled ? t("s.enabled") : t("site.disabled")),
+    summary: (s) => `${s.enabled ? t("s.enabled") : t("site.disabled")} · ${t("s.version").replace("{v}", __PANEL_VERSION__)}`,
   },
   {
     id: "meter", icon: "mdi:meter-electric-outline",
