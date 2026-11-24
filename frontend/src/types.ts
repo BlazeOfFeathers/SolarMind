@@ -44,6 +44,7 @@ export interface LiveLoad {
   // EV only
   battery_kwh?: number | null;
   battery_kwh_learned?: number | null;
+  battery_kwh_source?: "set" | "learned" | "car" | null;
   charge_limit?: number | null;
   eta_full_s?: number | null;
   eta_limit_s?: number | null;

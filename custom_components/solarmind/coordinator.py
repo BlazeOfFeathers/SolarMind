@@ -31,7 +31,7 @@ from .control.allocator import (
     allocate,
     evaluate_night_need,
 )
-from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, time_to_soc_s
+from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, capacity_from_car_estimate, time_to_soc_s
 from .control.peak import PeakTracker, month_key_of
 from .drivers import BaseDriver, make_driver, read_float
 from .history import HistoryData, LoadSample
@@ -311,8 +311,17 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if st.available:
             learner.update(st.soc, st.plugged, power_w * dt_s / 3.6e6 if charging else 0.0)
         capacity = cfg.get("ev_battery_kwh") or learner.learned_kwh
+        source = "set" if cfg.get("ev_battery_kwh") else "learned" if capacity else None
+        if not capacity and charging:
+            # Until we learned it: derive it from the car's own time-to-limit estimate.
+            guess = capacity_from_car_estimate(st.soc, st.charge_limit, st.car_time_to_limit_h, avg.average())
+            if guess:
+                learner.guess_kwh = guess
+        if not capacity and learner.guess_kwh:
+            capacity, source = learner.guess_kwh, "car"
         out: dict[str, Any] = {
             "battery_kwh": round(capacity, 1) if capacity else None,
+            "battery_kwh_source": source,
             "battery_kwh_learned": round(learner.learned_kwh, 1) if learner.learned_kwh else None,
             "charge_limit": st.charge_limit,
             "eta_full_s": None,

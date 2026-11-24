@@ -696,6 +696,8 @@ const ti = (t) => t.connection.sendMessagePromise({ type: "solarmind/config" }),
   "eta.full": "100% over {d}",
   "eta.limit": "{soc}% (limiet) om {t}",
   "eta.at_min": "bij minimum",
+  "eta.need_capacity": "Laadtijd: vul de batterijcapaciteit in",
+  "detail.battery_car": "Voorlopig geschat uit de auto: {kwh}",
   "detail.battery_learned": "Geleerd uit je laadsessies: {kwh}",
   "detail.battery_learning": "Leeg laten: SolarMind leert het uit je laadsessies",
   "detail.learned": "geleerd",
@@ -862,6 +864,8 @@ const ti = (t) => t.connection.sendMessagePromise({ type: "solarmind/config" }),
   "eta.full": "100% in {d}",
   "eta.limit": "{soc}% (limit) at {t}",
   "eta.at_min": "at minimum",
+  "eta.need_capacity": "Charge time: set the battery capacity",
+  "detail.battery_car": "Estimated from the car for now: {kwh}",
   "detail.battery_learned": "Learned from your charging sessions: {kwh}",
   "detail.battery_learning": "Leave empty: SolarMind learns it from your sessions",
   "detail.learned": "learned",
@@ -1225,7 +1229,10 @@ let Y = class extends w {
   }
   _eta() {
     const t = this.live;
-    if (this.load.type !== "ev" || !t || t.eta_full_s == null || !t.eta_full_s || t.plugged === !1) return u;
+    if (this.load.type !== "ev" || !t || t.plugged === !1) return u;
+    if (t.soc != null && t.soc < 100 && !t.battery_kwh)
+      return d`<span class="eta est"><ha-icon icon="mdi:timer-sand"></ha-icon>${n("eta.need_capacity")}</span>`;
+    if (t.eta_full_s == null || !t.eta_full_s) return u;
     const e = !!t.eta_estimated, i = `${e ? "~" : ""}${li(t.eta_full_s)}`, a = e ? ` ${n("eta.at_min")}` : ` (± ${_t(t.eta_full_s)})`;
     return d`<span class="eta ${e ? "est" : ""}"><ha-icon icon="mdi:timer-sand"></ha-icon>${n("eta.full").replace("{d}", i)}${a}</span>`;
   }
@@ -1913,7 +1920,7 @@ let C = class extends w {
           {
             icon: "mdi:car-battery",
             title: n("f.ev_battery_kwh"),
-            secondary: (e, i) => i != null && i.battery_kwh_learned ? n("detail.battery_learned").replace("{kwh}", `${i.battery_kwh_learned} kWh`) : n("detail.battery_learning"),
+            secondary: (e, i) => i != null && i.battery_kwh_learned ? n("detail.battery_learned").replace("{kwh}", `${i.battery_kwh_learned} kWh`) : (i == null ? void 0 : i.battery_kwh_source) === "car" && i.battery_kwh ? n("detail.battery_car").replace("{kwh}", `${i.battery_kwh} kWh`) : n("detail.battery_learning"),
             value: (e, i) => e.ev_battery_kwh ? `${e.ev_battery_kwh} kWh` : i != null && i.battery_kwh_learned ? `${i.battery_kwh_learned} kWh (${n("detail.learned")})` : "–",
             fields: [{ key: "ev_battery_kwh", kind: "number", nullable: !0, unit: "kWh" }]
           },

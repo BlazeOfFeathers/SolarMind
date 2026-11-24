@@ -89,7 +89,11 @@ export class SmLoadCard extends LitElement {
 
   private _eta() {
     const lv = this.live;
-    if (this.load.type !== "ev" || !lv || lv.eta_full_s == null || !lv.eta_full_s || lv.plugged === false) return nothing;
+    if (this.load.type !== "ev" || !lv || lv.plugged === false) return nothing;
+    if (lv.soc != null && lv.soc < 100 && !lv.battery_kwh) {
+      return html`<span class="eta est"><ha-icon icon="mdi:timer-sand"></ha-icon>${t("eta.need_capacity")}</span>`;
+    }
+    if (lv.eta_full_s == null || !lv.eta_full_s) return nothing;
     const est = !!lv.eta_estimated;
     const d = `${est ? "~" : ""}${fmtEta(lv.eta_full_s)}`;
     const tail = est ? ` ${t("eta.at_min")}` : ` (± ${fmtClockIn(lv.eta_full_s)})`;
