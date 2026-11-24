@@ -62,6 +62,7 @@ class LoadState:
     plugged: bool | None = None  # EV cable connected (None = unknown, assume yes)
     charge_limit: float | None = None  # EV charge limit set in the car (%)
     car_time_to_limit_h: float | None = None  # the car's own estimate (Tesla time_to_full_charge)
+    car_state: str | None = None  # raw charging state reported by the car (diagnostics)
 
 
 @dataclass

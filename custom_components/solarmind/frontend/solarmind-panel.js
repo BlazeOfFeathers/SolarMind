@@ -696,6 +696,8 @@ const ti = (t) => t.connection.sendMessagePromise({ type: "solarmind/config" }),
   "eta.full": "100% over {d}",
   "eta.limit": "{soc}% (limiet) om {t}",
   "eta.at_min": "bij minimum",
+  "hint.driver_error": "Auto weigert",
+  "hint.no_power": "Laadpaal geeft geen stroom",
   "eta.need_capacity": "Laadtijd: vul de batterijcapaciteit in",
   "detail.battery_car": "Voorlopig geschat uit de auto: {kwh}",
   "detail.battery_learned": "Geleerd uit je laadsessies: {kwh}",
@@ -864,6 +866,8 @@ const ti = (t) => t.connection.sendMessagePromise({ type: "solarmind/config" }),
   "eta.full": "100% in {d}",
   "eta.limit": "{soc}% (limit) at {t}",
   "eta.at_min": "at minimum",
+  "hint.driver_error": "Car refused",
+  "hint.no_power": "Charger delivers no power",
   "eta.need_capacity": "Charge time: set the battery capacity",
   "detail.battery_car": "Estimated from the car for now: {kwh}",
   "detail.battery_learned": "Learned from your charging sessions: {kwh}",
@@ -1225,7 +1229,7 @@ let Y = class extends w {
   }
   _hint() {
     const t = this.live, e = this.load;
-    return t ? t.reason === "peak_guard" ? n("hint.peak") : t.is_full ? n(e.type === "ev" ? "hint.full_ev" : "hint.full") : e.mode === "solar_night" && t.night_needed === !0 ? n("hint.night_needed") : e.mode === "solar_night" && t.night_needed === !1 ? n("hint.night_not_needed") : e.type === "ev" && t.plugged === !1 ? n("reason.not_connected") : e.type === "ev" && t.is_on && t.current_a != null ? `${n("hint.charging_at")} ${Math.round(t.current_a)} A` : null : null;
+    return t ? t.driver_error ? `${n("hint.driver_error")}: ${t.driver_error}` : e.type === "ev" && t.car_state === "NoPower" ? n("hint.no_power") : t.reason === "peak_guard" ? n("hint.peak") : t.is_full ? n(e.type === "ev" ? "hint.full_ev" : "hint.full") : e.mode === "solar_night" && t.night_needed === !0 ? n("hint.night_needed") : e.mode === "solar_night" && t.night_needed === !1 ? n("hint.night_not_needed") : e.type === "ev" && t.plugged === !1 ? n("reason.not_connected") : e.type === "ev" && t.is_on && t.current_a != null ? `${n("hint.charging_at")} ${Math.round(t.current_a)} A` : null : null;
   }
   _eta() {
     const t = this.live;

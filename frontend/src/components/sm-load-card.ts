@@ -78,6 +78,8 @@ export class SmLoadCard extends LitElement {
     const lv = this.live;
     const l = this.load;
     if (!lv) return null;
+    if (lv.driver_error) return `${t("hint.driver_error")}: ${lv.driver_error}`;
+    if (l.type === "ev" && lv.car_state === "NoPower") return t("hint.no_power");
     if (lv.reason === "peak_guard") return t("hint.peak");
     if (lv.is_full) return t(l.type === "ev" ? "hint.full_ev" : "hint.full");
     if (l.mode === "solar_night" && lv.night_needed === true) return t("hint.night_needed");

@@ -249,6 +249,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "solar_kwh_day": round(rt.solar_kwh_day, 3),
                 "night_kwh": round(rt.night_kwh, 3),
                 "last_hot_ts": rt.last_hot_ts or None,
+                "car_state": st.car_state,
+                "driver_error": getattr(self.drivers.get(cfg["id"]), "last_error", None),
             }
             if cfg["type"] == LOAD_EV:
                 loads_live[cfg["id"]].update(self._ev_eta(cfg, st, p, now, dt_s, voltage))
@@ -352,6 +354,8 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             wpa = voltage * max(1, int(cfg.get("ev_phases", 1)))
             min_w = cfg.get("ev_min_power_w") if cfg.get("mode") == "solar" else None
             power = max(float(min_w or 0), cfg.get("ev_min_current", 6) * wpa)
+            if cfg.get("mode") == "on":
+                power = cfg.get("ev_max_current", 16) * wpa  # "On" charges at full current
             out["eta_estimated"] = True
         full = time_to_soc_s(st.soc, 100.0, capacity, power)
         out["eta_full_s"] = None if full is None else round(full)

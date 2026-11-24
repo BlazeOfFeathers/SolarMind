@@ -106,4 +106,5 @@ class LoadSensor(SolarMindLoadEntity, SensorEntity):
             return None
         live = self.live
         return {k: live.get(k) for k in ("is_on", "allocated_w", "current_a", "target_current_a", "soc", "temperature",
-                                          "plugged", "is_full", "night_needed", "night_kwh", "solar_kwh_day")}
+                                          "plugged", "is_full", "night_needed", "night_kwh", "solar_kwh_day",
+                                          "car_state", "driver_error")}
