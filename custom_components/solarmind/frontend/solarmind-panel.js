@@ -1230,7 +1230,7 @@ let Y = class extends w {
   _eta() {
     const t = this.live;
     if (this.load.type !== "ev" || !t || t.plugged === !1) return u;
-    if (t.soc != null && t.soc < 100 && !t.battery_kwh)
+    if (t.soc != null && t.soc < 100 && !t.battery_kwh && t.eta_full_s == null && t.eta_limit_s == null)
       return d`<span class="eta est"><ha-icon icon="mdi:timer-sand"></ha-icon>${n("eta.need_capacity")}</span>`;
     if (t.eta_full_s == null || !t.eta_full_s) return u;
     const e = !!t.eta_estimated, i = `${e ? "~" : ""}${li(t.eta_full_s)}`, a = e ? ` ${n("eta.at_min")}` : ` (± ${_t(t.eta_full_s)})`;

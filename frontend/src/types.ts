@@ -49,6 +49,7 @@ export interface LiveLoad {
   eta_full_s?: number | null;
   eta_limit_s?: number | null;
   eta_estimated?: boolean;
+  eta_source?: "car" | "calc" | null;
 }
 
 export interface Live {
