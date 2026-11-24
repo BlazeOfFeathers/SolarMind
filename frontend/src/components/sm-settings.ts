@@ -83,18 +83,18 @@ const categories = (hass: Hass): Category[] => [
     id: "planning", group: "control", icon: "mdi:calendar-clock",
     fields: [
       { key: "plan_enabled", kind: "bool", helper: t("s.plan_enabled.help") },
-      { key: "plan_boiler_night", kind: "bool", helper: t("s.plan_boiler_night.help"), show: (d) => !!d.plan_enabled },
-      { key: "plan_ev", kind: "bool", helper: t("s.plan_ev.help"), show: (d) => !!d.plan_enabled },
-      { key: "plan_battery_night", kind: "bool", helper: t("s.plan_battery_night.help"), show: (d) => !!d.plan_enabled },
-      { key: "plan_peak_spread", kind: "bool", helper: t("s.plan_peak_spread.help"), show: (d) => !!d.plan_enabled },
-      { key: "plan_learn_base", kind: "bool", helper: t("s.plan_learn_base.help"), show: (d) => !!d.plan_enabled },
-      { key: "plan_base_w", kind: "number", unit: "W", step: 50, show: (d) => !!d.plan_enabled && !d.plan_learn_base },
-      { key: "plan_pv_estimate", kind: "select", options: opt("plan_pv_estimate", ["pv_estimate", "pv_estimate10"]), helper: t("s.plan_pv_estimate.help"), show: (d) => !!d.plan_enabled },
-      { key: "forecast_factor_pct", kind: "number", unit: "%", step: 5, helper: t("s.forecast_factor_pct.help"), show: (d) => !!d.plan_enabled },
-      { key: "plan_horizon_h", kind: "number", unit: "u", step: 6, helper: t("s.plan_horizon_h.help"), show: (d) => !!d.plan_enabled },
+      { key: "plan_boiler_night", kind: "bool", helper: t("s.plan_boiler_night.help") },
+      { key: "plan_ev", kind: "bool", helper: t("s.plan_ev.help") },
+      { key: "plan_battery_night", kind: "bool", helper: t("s.plan_battery_night.help") },
+      { key: "plan_peak_spread", kind: "bool", helper: t("s.plan_peak_spread.help") },
+      { key: "plan_learn_base", kind: "bool", helper: t("s.plan_learn_base.help") },
+      { key: "plan_base_w", kind: "number", unit: "W", step: 50, show: (d) => !d.plan_learn_base },
+      { key: "plan_pv_estimate", kind: "select", options: opt("plan_pv_estimate", ["pv_estimate", "pv_estimate10"]), helper: t("s.plan_pv_estimate.help") },
+      { key: "forecast_factor_pct", kind: "number", unit: "%", step: 5, helper: t("s.forecast_factor_pct.help") },
+      { key: "plan_horizon_h", kind: "number", unit: "u", step: 6, helper: t("s.plan_horizon_h.help") },
     ],
     summary: (s, _h, site) => {
-      if (!s.plan_enabled) return t("detail.off");
+      if (!s.plan_enabled) return t("s.planning.trial");
       const n = Object.values(site?.plan?.loads ?? {}).filter((p: any) => p.grid_kwh > 0.01).length;
       return n ? t("s.planning.summary").replace("{n}", String(n)) : t("s.planning.on");
     },

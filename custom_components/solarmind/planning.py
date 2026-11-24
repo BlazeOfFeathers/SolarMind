@@ -99,6 +99,7 @@ class PlanningEngine:
         self._shape: list[float] | None = None
         self.dirty = True  # rebuild on the next cycle
         self.info: dict[str, Any] = {}
+        self.active = False  # planning switched on: the plan steers (else trial mode)
 
     # -------------------------------------------------------------- persist
 
@@ -307,10 +308,9 @@ class PlanningEngine:
         history: Any,
         voltage: float,
     ) -> Plan | None:
-        if not settings.get("plan_enabled"):
-            self.plan = None
-            self.info = {}
-            return None
+        # The plan is always made, also with planning off: then it only shows what it would do
+        # (trial mode) and steers nothing.
+        self.active = bool(settings.get("plan_enabled"))
         if not self.dirty and self.plan is not None and now - self._built_ts < REBUILD_S and self.plan.index(now) == 0:
             return self.plan
         self.dirty = False
@@ -337,7 +337,7 @@ class PlanningEngine:
 
     def controls(self, settings: dict[str, Any], now: float) -> dict[str, float]:
         """Planned grid power now for every load whose grid use the plan decides."""
-        if self.plan is None:
+        if self.plan is None or not settings.get("plan_enabled"):
             return {}
         out = {}
         for lid, meta in self.plan.loads.items():
@@ -352,5 +352,5 @@ class PlanningEngine:
 
     def label(self, dec: Decision, now: float) -> None:
         """An idle load that has grid energy planned later says so."""
-        if self.plan is not None and dec.reason == R_NO_SURPLUS and self.plan.grid_later(dec.load_id, now):
+        if self.active and self.plan is not None and dec.reason == R_NO_SURPLUS and self.plan.grid_later(dec.load_id, now):
             dec.reason = R_PLAN_WAIT

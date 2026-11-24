@@ -49,7 +49,7 @@ Elke 10 seconden:
 
 Naar het voorbeeld van RoomMind: SolarMind voorspelt per kwartier je zon (Solcast `detailedForecast`, Open-Meteo `watts`/`wh_period`, of het dagtotaal gespreid over de dag) en je huisverbruik (geleerd per uur uit de laatste 14 dagen), plant de komende 36 uur voor elke verbruiker en plant elke minuut opnieuw. De gewone verdeling blijft elke 10 seconden sturen; de planning zegt haar alleen hoeveel netvermogen een verbruiker dit kwartier mag nemen.
 
-Aan te zetten onder *Instellingen → Voorspellend plannen*. Elk onderdeel staat apart aan of uit:
+Staat de hoofdschakelaar onder *Instellingen → Voorspellend plannen* uit, dan draait de planner in **proefmodus**: je ziet in Analytics wat hij zou doen, maar hij stuurt niets. Zet hem aan om de planning te laten uitvoeren. Elk onderdeel staat apart aan of uit:
 
 - **Boilers** (Zon + nacht): 's nachts alleen het tekort bijvullen. De dagelijkse behoefte wordt geleerd uit de dagen dat de boiler vol raakte, of zelf ingesteld. Met een optionele temperatuursensor rekent SolarMind met inhoud × temperatuurstijging.
 - **Auto**: nachtladen tot het doel-% alleen voor wat de zon niet geeft, gespreid over de nacht; met een **vertrektijd** (per auto, met dagen) minstens het gekozen % tegen dat uur.

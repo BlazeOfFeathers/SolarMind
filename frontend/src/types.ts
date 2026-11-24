@@ -62,6 +62,7 @@ export interface LiveLoad {
   // Planner
   plan?: Record<string, any> | null;
   need_learned_kwh?: number | null;
+  plan_active?: boolean;
 }
 
 export interface Live {

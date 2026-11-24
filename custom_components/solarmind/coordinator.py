@@ -340,6 +340,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             plan = self.planning.plan
             learner = self.planning.learners.get(cfg["id"])
             loads_live[cfg["id"]]["plan"] = plan.loads.get(cfg["id"]) if plan else None
+            loads_live[cfg["id"]]["plan_active"] = self.planning.active
             loads_live[cfg["id"]]["need_learned_kwh"] = (
                 round(learner.learned_kwh, 2) if learner and learner.learned_kwh else None
             )
@@ -433,7 +434,12 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         plan = self.planning.plan
         if plan is None:
             return None
-        return {"created": plan.created, "loads": plan.loads, "pv_source": self.planning.info.get("pv_source")}
+        return {
+            "created": plan.created,
+            "active": self.planning.active,
+            "loads": plan.loads,
+            "pv_source": self.planning.info.get("pv_source"),
+        }
 
     def _ev_eta(self, cfg: dict[str, Any], st: LoadState, power_w: float, now: float, dt_s: float, voltage: float) -> dict[str, Any]:
         """Time to 100 % (and to the car's charge limit) at the current charging power."""

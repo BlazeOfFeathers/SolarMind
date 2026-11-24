@@ -210,3 +210,28 @@ async def test_planner_runs_and_serves_the_plan(hass: HomeAssistant, hass_ws_cli
         assert len(res["plan"]["slots"]) == 36 * 4
         assert res["info"]["pv_source"].startswith("detailed")
         assert coordinator.live["site"]["plan"]["loads"][load_id]["grid_planned"] is True
+
+
+async def test_plan_is_shown_in_trial_mode_but_does_not_steer(hass: HomeAssistant, hass_ws_client) -> None:
+    await async_setup_component(hass, "http", {})
+    await async_setup_component(hass, "websocket_api", {})
+    hass.config.components.add("frontend")
+    with patch("custom_components.solarmind._async_register_panel"):
+        entry = await _setup(hass)
+        client = await hass_ws_client(hass)
+        await client.send_json({"id": 1, "type": "solarmind/settings/save", "settings": {
+            "grid_power_entity": "sensor.grid", "night_start": "00:00", "night_end": "23:59"}})
+        assert (await client.receive_json())["success"]
+        await client.send_json({"id": 2, "type": "solarmind/loads/save", "load": {
+            "name": "Boiler", "switch_entity": "switch.boiler1", "mode": "solar_night", "plan_need_kwh": 3.0}})
+        load_id = (await client.receive_json())["result"]["load"]["id"]
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        await client.send_json({"id": 3, "type": "solarmind/plan"})
+        res = (await client.receive_json())["result"]
+        assert res["enabled"] is False
+        assert res["plan"]["loads"][load_id]["grid_kwh"] > 0  # what it would do
+        assert coordinator.live["site"]["plan"]["active"] is False
+        assert coordinator.planning.controls(coordinator.store.settings, 0) == {}
+        assert coordinator.live["loads"][load_id]["reason"] not in ("planned", "plan_wait")
