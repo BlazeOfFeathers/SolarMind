@@ -37,6 +37,7 @@ export class SmDashboard extends LitElement {
         border: 2px dashed var(--sm-border); border-radius: var(--sm-radius); color: var(--secondary-text-color);
         cursor: pointer; background: none; font: inherit; font-size: 15px; --mdc-icon-size: 32px;
       }
+      .edit-list + .add { width: 100%; min-height: 96px; margin-top: 12px; }
       .add:hover { border-color: var(--primary-color); color: var(--primary-color); }
       .banner {
         display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 12px; border-radius: var(--sm-radius);
@@ -115,7 +116,8 @@ export class SmDashboard extends LitElement {
           </sm-list-row>
         </div>`,
       )}
-    </div>`;
+    </div>
+    <button class="add" @click=${() => this._emit("add-load")}><ha-icon icon="mdi:plus-circle-outline"></ha-icon>${t("loads.add")}</button>`;
   }
 
   render() {
@@ -129,7 +131,6 @@ export class SmDashboard extends LitElement {
         : this.loads.length
           ? html`<div class="grid">
               ${this.loads.map((l, i) => html`<sm-load-card .load=${l} .live=${this.live?.loads?.[l.id]} .spark=${this.spark[l.id] ?? []} .priority=${i + 1}></sm-load-card>`)}
-              <button class="add" @click=${() => this._emit("add-load")}><ha-icon icon="mdi:plus-circle-outline"></ha-icon>${t("loads.add")}</button>
             </div>`
           : html`<div class="placeholder"><ha-icon icon="mdi:solar-power-variant-outline"></ha-icon><p>${t("loads.empty")}</p>
               <button class="filled" @click=${() => this._emit("add-load")}>${t("loads.add")}</button></div>`}

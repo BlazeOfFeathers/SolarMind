@@ -1995,7 +1995,8 @@ let K = class extends z {
           </sm-list-row>
         </div>`
     )}
-    </div>`;
+    </div>
+    <button class="add" @click=${() => this._emit("add-load")}><ha-icon icon="mdi:plus-circle-outline"></ha-icon>${o("loads.add")}</button>`;
   }
   render() {
     var e;
@@ -2009,7 +2010,6 @@ let K = class extends z {
       var s, n;
       return d`<sm-load-card .load=${a} .live=${(n = (s = this.live) == null ? void 0 : s.loads) == null ? void 0 : n[a.id]} .spark=${this.spark[a.id] ?? []} .priority=${i + 1}></sm-load-card>`;
     })}
-              <button class="add" @click=${() => this._emit("add-load")}><ha-icon icon="mdi:plus-circle-outline"></ha-icon>${o("loads.add")}</button>
             </div>` : d`<div class="placeholder"><ha-icon icon="mdi:solar-power-variant-outline"></ha-icon><p>${o("loads.empty")}</p>
               <button class="filled" @click=${() => this._emit("add-load")}>${o("loads.add")}</button></div>`}
     `;
@@ -2034,6 +2034,7 @@ K.styles = [
         border: 2px dashed var(--sm-border); border-radius: var(--sm-radius); color: var(--secondary-text-color);
         cursor: pointer; background: none; font: inherit; font-size: 15px; --mdc-icon-size: 32px;
       }
+      .edit-list + .add { width: 100%; min-height: 96px; margin-top: 12px; }
       .add:hover { border-color: var(--primary-color); color: var(--primary-color); }
       .banner {
         display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 12px; border-radius: var(--sm-radius);
@@ -3089,7 +3090,7 @@ const ds = ["measure", "control", "info", "system"], tt = (t) => t == null ? "�
     group: "system",
     icon: "mdi:bug-outline",
     fields: [],
-    summary: () => `${o("s.cat.debug.summary")} · ${o("s.version").replace("{v}", "0.2.6")}`
+    summary: () => `${o("s.cat.debug.summary")} · ${o("s.version").replace("{v}", "0.2.7")}`
   }
 ];
 let V = class extends z {
@@ -4114,8 +4115,8 @@ let O = class extends z {
     const t = this._config;
     return d`
       ${this._toolbar()}
-      ${t && t.version && t.version !== "0.2.6" ? d`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
-            <span>${o("panel.stale").replace("{server}", t.version).replace("{panel}", "0.2.6")}</span>
+      ${t && t.version && t.version !== "0.2.7" ? d`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
+            <span>${o("panel.stale").replace("{server}", t.version).replace("{panel}", "0.2.7")}</span>
             <button class="text" @click=${() => location.reload()}>${o("panel.reload")}</button></div>` : _}
       <main>${t ? this._content(t) : _}</main>
       ${this._adding ? d`<sm-dialog .heading=${o("loads.add")} .saveLabel=${o("load.add_save")} .busy=${this._addBusy} .error=${this._addError}
