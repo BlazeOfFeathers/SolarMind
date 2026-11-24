@@ -5,6 +5,9 @@
   (charge switch + charging amps ``number``), e.g. the Tesla BLE MQTT/ESPHome entities.
 * ``TeslaBleProxyDriver``: direct REST calls to TeslaBleHttpProxy
   (``/api/1/vehicles/{vin}/command/...``).
+* ``BatteryDriver``: home battery via entities of any integration (SoC and power
+  sensors, a power setpoint ``number`` or separate charge/discharge numbers,
+  optionally a ``select`` that switches the inverter between remote and auto).
 """
 
 from __future__ import annotations
@@ -18,8 +21,8 @@ from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import EV_DRIVER_TESLA_BLE, LOAD_EV
-from .control.allocator import Decision, LoadState
+from .const import BAT_SIGN_DISCHARGE_POSITIVE, EV_DRIVER_TESLA_BLE, LOAD_BATTERY, LOAD_EV
+from .control.allocator import Decision, LoadState, battery_power_from_sensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -324,7 +327,104 @@ def _find_key(data: Any, key: str) -> Any:
     return None
 
 
+class BatteryDriver(BaseDriver):
+    """Sends a power setpoint (+ charge, - discharge) to the battery's entities."""
+
+    def __init__(self, hass: HomeAssistant, cfg: dict[str, Any]) -> None:
+        super().__init__(hass, cfg)
+        self._sent_w: float | None = None
+        self._sent_ts = 0.0
+        self._remote: bool | None = None
+
+    async def async_read(self) -> LoadState:
+        soc = read_float(self.hass, self.cfg.get("bat_soc_entity"))
+        power = battery_power_from_sensor(self.cfg, read_float(self.hass, self.cfg.get("bat_power_entity"), to_watts=True))
+        if soc is None and power is None:
+            return LoadState(available=False)
+        return LoadState(available=True, is_on=bool(power and abs(power) > 1), power_w=power, soc=soc)
+
+    async def _set_number(self, entity_id: str, watts: float) -> None:
+        st = self.hass.states.get(entity_id)
+        unit = ((st.attributes.get("unit_of_measurement") if st else None) or "w").lower()
+        value: float = watts / 1000 if unit == "kw" else watts
+        if st is not None:
+            lo, hi = st.attributes.get("min"), st.attributes.get("max")
+            if lo is not None:
+                value = max(float(lo), value)
+            if hi is not None:
+                value = min(float(hi), value)
+        value = round(value, 3) if unit == "kw" else round(value)
+        domain = "input_number" if entity_id.startswith("input_number.") else "number"
+        await self.hass.services.async_call(domain, "set_value", {"entity_id": entity_id, "value": value}, blocking=False)
+
+    async def _select(self, option: str) -> None:
+        ent = self.cfg.get("bat_mode_entity")
+        if not ent or not option:
+            return
+        st = self.hass.states.get(ent)
+        if st is not None and st.state == option:
+            return
+        domain = "input_select" if ent.startswith("input_select.") else "select"
+        await self.hass.services.async_call(domain, "select_option", {"entity_id": ent, "option": option}, blocking=False)
+
+    async def async_apply(self, st: LoadState, dec: Decision) -> bool:
+        if dec.on is None:
+            return False
+        if dec.on is False:
+            # Mode off: hand the battery back to the inverter's own control.
+            if self._remote is not False:
+                await self._release()
+            return False
+        target = float(dec.setpoint_w or 0.0)
+        now = time.monotonic()
+        deadband = float(self.cfg.get("bat_deadband_w", 50))
+        if (
+            self._sent_w is not None
+            and abs(target - self._sent_w) < deadband
+            and (target == 0) == (self._sent_w == 0)
+            and now - self._sent_ts < RESEND_AFTER_S
+        ):
+            return False
+        if self._remote is not True:
+            await self._select(self.cfg.get("bat_mode_remote_option", ""))
+            self._remote = True
+        await self._send(target)
+        self._sent_w = target
+        self._sent_ts = now
+        return False
+
+    async def _send(self, watts: float) -> None:
+        sp = self.cfg.get("bat_setpoint_entity")
+        if sp:
+            value = -watts if self.cfg.get("bat_setpoint_sign") == BAT_SIGN_DISCHARGE_POSITIVE else watts
+            await self._set_number(sp, value)
+            return
+        ch, dis = self.cfg.get("bat_charge_entity"), self.cfg.get("bat_discharge_entity")
+        if ch:
+            await self._set_number(ch, max(0.0, watts))
+        if dis:
+            await self._set_number(dis, max(0.0, -watts))
+
+    async def _release(self) -> None:
+        self._remote = False
+        self._sent_w = None
+        if self.cfg.get("bat_mode_entity") and self.cfg.get("bat_mode_auto_option"):
+            await self._select(self.cfg["bat_mode_auto_option"])
+        else:
+            # Without a mode select: a zero setpoint is the safest neutral state.
+            await self._send(0.0)
+
+    async def async_close(self) -> None:
+        if self._remote:
+            try:
+                await self._release()
+            except Exception:
+                _LOGGER.debug("Releasing battery %s failed", self.cfg.get("name"), exc_info=True)
+
+
 def make_driver(hass: HomeAssistant, cfg: dict[str, Any]) -> BaseDriver:
+    if cfg["type"] == LOAD_BATTERY:
+        return BatteryDriver(hass, cfg)
     if cfg["type"] == LOAD_EV:
         if cfg.get("ev_driver") == EV_DRIVER_TESLA_BLE:
             return TeslaBleProxyDriver(hass, cfg)

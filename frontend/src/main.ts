@@ -5,6 +5,7 @@ import { setLanguage, t } from "./i18n";
 import { cardStyles, tokens } from "./styles/tokens";
 import type { ConfigPayload, Hass, Live, Mode } from "./types";
 import type { FieldSpec } from "./components/shared/sm-form";
+import { defaultIcon, modeKey, modesFor } from "./components/common";
 import "./components/sm-dashboard";
 import "./components/sm-load-detail";
 import "./components/sm-settings";
@@ -117,7 +118,8 @@ export class SolarMindPanel extends LitElement {
       const out: Record<string, [number, number, number][]> = {};
       for (const row of data.timeline.rows) {
         for (const [lid, v] of Object.entries(row[3] as Record<string, any[]>)) {
-          (out[lid] ??= []).push([row[0], v[0] ?? 0, v[1] ?? 0]);
+          // Batteries: show charging and discharging alike (absolute power).
+          (out[lid] ??= []).push([row[0], Math.abs(v[0] ?? 0), v[1] ?? 0]);
         }
       }
       this._spark = out;
@@ -181,19 +183,26 @@ export class SolarMindPanel extends LitElement {
 
   private _addFields(): FieldSpec[] {
     const isEv = (d: Record<string, any>) => d.type === "ev";
+    const isBat = (d: Record<string, any>) => d.type === "battery";
+    const isSwitch = (d: Record<string, any>) => !isEv(d) && !isBat(d);
     const tesla = (d: Record<string, any>) => isEv(d) && d.ev_driver === "tesla_ble_proxy";
     return [
       { key: "name", kind: "text" },
-      { key: "type", kind: "select", options: ["switch", "ev"].map((v) => ({ value: v, label: t(`type.${v}`) })) },
-      { key: "switch_entity", kind: "entity", domains: ["switch", "input_boolean", "light"], show: (d) => !isEv(d) },
-      { key: "nominal_power_w", kind: "number", unit: "W", step: 50, show: (d) => !isEv(d) },
+      { key: "type", kind: "select", options: ["switch", "ev", "battery"].map((v) => ({ value: v, label: t(`type.${v}`) })) },
+      { key: "switch_entity", kind: "entity", domains: ["switch", "input_boolean", "light"], show: isSwitch },
+      { key: "nominal_power_w", kind: "number", unit: "W", step: 50, show: isSwitch },
+      { key: "bat_soc_entity", kind: "entity", domains: ["sensor"], show: isBat },
+      { key: "bat_power_entity", kind: "entity", domains: ["sensor"], show: isBat, helper: t("f.bat_power_entity.help") },
+      { key: "bat_power_sign", kind: "select", show: isBat, options: ["charge_positive", "discharge_positive"].map((v) => ({ value: v, label: t(`f.bat_sign.${v}`) })) },
+      { key: "bat_setpoint_entity", kind: "entity", domains: ["number", "input_number"], show: isBat, helper: t("f.bat_setpoint_entity.help") },
+      { key: "bat_capacity_kwh", kind: "number", unit: "kWh", step: 0.1, show: isBat },
       { key: "ev_driver", kind: "select", options: ["tesla_ble_proxy", "entities"].map((v) => ({ value: v, label: t(`f.ev_driver.${v}`) })), show: isEv },
       { key: "ev_proxy_url", kind: "text", show: tesla, helper: t("f.ev_proxy_url.help") },
       { key: "ev_vin", kind: "text", show: tesla },
       { key: "ev_charge_switch_entity", kind: "entity", domains: ["switch", "input_boolean"], show: (d) => isEv(d) && !tesla(d) },
       { key: "ev_current_entity", kind: "entity", domains: ["number", "input_number"], show: (d) => isEv(d) && !tesla(d) },
-      { key: "power_entity", kind: "entity", domains: ["sensor"], helper: t("f.power_entity.help") },
-      { key: "mode", kind: "select", options: ["solar", "solar_night", "on", "off"].map((v) => ({ value: v, label: t(`mode.${v}`) })) },
+      { key: "power_entity", kind: "entity", domains: ["sensor"], helper: t("f.power_entity.help"), show: (d) => !isBat(d) },
+      { key: "mode", kind: "select", options: modesFor(this._adding?.type).map((v) => ({ value: v, label: t(modeKey(v, this._adding?.type)) })) },
     ];
   }
 
@@ -204,7 +213,8 @@ export class SolarMindPanel extends LitElement {
 
   private async _saveAdd() {
     const d = { ...this._adding! };
-    if (d.type === "ev" && (!d.icon || d.icon === "mdi:water-boiler")) d.icon = "mdi:ev-station";
+    if (d.type !== "switch" && (!d.icon || d.icon === "mdi:water-boiler")) d.icon = defaultIcon(d.type);
+    if (!modesFor(d.type).includes(d.mode)) d.mode = d.type === "battery" ? "self" : "solar";
     this._addBusy = true;
     try {
       const res = await saveLoad(this.hass, d);

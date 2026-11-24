@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.1.6"
+VERSION = "0.2.0"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
@@ -17,7 +17,8 @@ UPDATE_INTERVAL = 10  # seconds
 # Load types
 LOAD_SWITCH = "switch"  # on/off load such as a boiler on a smart plug
 LOAD_EV = "ev"  # variable power load (EV charger, amps adjustable)
-LOAD_TYPES = [LOAD_SWITCH, LOAD_EV]
+LOAD_BATTERY = "battery"  # home battery: takes surplus and can also deliver power
+LOAD_TYPES = [LOAD_SWITCH, LOAD_EV, LOAD_BATTERY]
 
 # EV drivers
 EV_DRIVER_ENTITIES = "entities"  # switch + number entity (any integration)
@@ -29,7 +30,20 @@ MODE_OFF = "off"
 MODE_SOLAR = "solar"
 MODE_SOLAR_NIGHT = "solar_night"
 MODE_ON = "on"
-MODES = [MODE_SOLAR, MODE_SOLAR_NIGHT, MODE_ON, MODE_OFF]
+MODE_SELF = "self"  # battery only: charge on surplus, discharge to cover the house
+MODES = [MODE_SELF, MODE_SOLAR, MODE_SOLAR_NIGHT, MODE_ON, MODE_OFF]
+LOAD_MODES = [MODE_SOLAR, MODE_SOLAR_NIGHT, MODE_ON, MODE_OFF]
+BATTERY_MODES = [MODE_SELF, MODE_SOLAR, MODE_SOLAR_NIGHT, MODE_ON, MODE_OFF]
+
+# What a discharging battery may supply
+BAT_FOR_HOUSE = "house"  # only the house (base load), never the managed loads
+BAT_FOR_HOUSE_SWITCH = "house_switch"  # house + on/off loads running from the grid (boilers)
+BAT_FOR_ALL = "all"  # house + every load running from the grid (also the EV)
+BAT_FOR = [BAT_FOR_HOUSE, BAT_FOR_HOUSE_SWITCH, BAT_FOR_ALL]
+
+# Battery power sensor / setpoint sign
+BAT_SIGN_CHARGE_POSITIVE = "charge_positive"
+BAT_SIGN_DISCHARGE_POSITIVE = "discharge_positive"
 
 # Reasons (why a load is in its current state). Stored in history as short codes.
 R_IDLE = "idle"
@@ -50,6 +64,9 @@ R_WAIT_STOP = "stop_delay"
 R_UNAVAILABLE = "unavailable"
 R_DISABLED = "disabled"
 R_NOT_CONNECTED = "not_connected"
+R_SELF_CONSUMPTION = "self_consumption"  # battery covers the house
+R_RESERVE = "reserve"  # battery at its minimum SoC
+R_BAT_FULL = "battery_full"
 
 REASONS = [
     R_IDLE,
@@ -70,6 +87,9 @@ REASONS = [
     R_UNAVAILABLE,
     R_DISABLED,
     R_NOT_CONNECTED,
+    R_SELF_CONSUMPTION,
+    R_RESERVE,
+    R_BAT_FULL,
 ]
 
 # Grid sensor sign conventions
@@ -151,4 +171,25 @@ DEFAULT_LOAD: dict = {
     "ev_charge_limit_entity": None,  # entities driver: the car's charge limit (%)
     "ev_min_power_w": None,  # Solar mode: always charge at least this, topped up from the grid
     "ev_current_step_interval_s": 30,
+    # Home battery
+    "bat_soc_entity": None,
+    "bat_power_entity": None,  # measured battery power
+    "bat_power_sign": BAT_SIGN_CHARGE_POSITIVE,
+    "bat_setpoint_entity": None,  # number: one signed power setpoint (W or kW)
+    "bat_setpoint_sign": BAT_SIGN_CHARGE_POSITIVE,
+    "bat_charge_entity": None,  # or two numbers: charge power ...
+    "bat_discharge_entity": None,  # ... and discharge power
+    "bat_mode_entity": None,  # optional select to put the inverter in remote/forced control
+    "bat_mode_remote_option": "",
+    "bat_mode_auto_option": "",
+    "bat_capacity_kwh": 10.0,
+    "bat_max_charge_w": 3000,
+    "bat_max_discharge_w": 3000,
+    "bat_min_soc": 10,  # self consumption stops here (reserve)
+    "bat_peak_min_soc": 5,  # the peak guard may use the battery down to here
+    "bat_max_soc": 100,  # solar charging stops here
+    "bat_target_soc": 80,  # grid charging ("On", night) stops here
+    "bat_discharge_for": BAT_FOR_HOUSE,
+    "bat_peak_support": True,  # discharge to keep the quarter peak under the limit
+    "bat_deadband_w": 50,  # ignore setpoint changes smaller than this
 }

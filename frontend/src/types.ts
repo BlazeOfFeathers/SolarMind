@@ -8,12 +8,12 @@ export interface Hass {
   themes?: { darkMode?: boolean };
 }
 
-export type Mode = "solar" | "solar_night" | "on" | "off";
+export type Mode = "self" | "solar" | "solar_night" | "on" | "off";
 
 export interface Load {
   id: string;
   name: string;
-  type: "switch" | "ev";
+  type: "switch" | "ev" | "battery";
   enabled: boolean;
   mode: Mode;
   icon: string;
@@ -51,6 +51,12 @@ export interface LiveLoad {
   eta_estimated?: boolean;
   eta_source?: "car" | "calc" | null;
   car_state?: string | null;
+  // Battery only (power_w is + charging, - discharging)
+  setpoint_w?: number | null;
+  capacity_kwh?: number | null;
+  stored_kwh?: number | null;
+  eta_empty_s?: number | null;
+  discharge_kwh_today?: number;
   driver_error?: string | null;
 }
 

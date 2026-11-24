@@ -9,18 +9,33 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DEFAULT_LOAD, DEFAULT_SETTINGS, MODES, STORAGE_KEY, STORAGE_VERSION
+from .const import (
+    BATTERY_MODES,
+    DEFAULT_LOAD,
+    DEFAULT_SETTINGS,
+    LOAD_BATTERY,
+    LOAD_MODES,
+    MODE_SELF,
+    STORAGE_KEY,
+    STORAGE_VERSION,
+)
+
+
+def modes_for(load: dict[str, Any]) -> list[str]:
+    return BATTERY_MODES if load.get("type") == LOAD_BATTERY else LOAD_MODES
 
 
 def normalize_load(data: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
     load = copy.deepcopy(existing) if existing else copy.deepcopy(DEFAULT_LOAD)
+    if not existing and data.get("type") == LOAD_BATTERY:
+        load.update(mode=MODE_SELF, icon="mdi:home-battery")
     for key, value in data.items():
         if key in DEFAULT_LOAD:
             load[key] = value
     if not load.get("id"):
         load["id"] = uuid.uuid4().hex[:10]
-    if load["mode"] not in MODES:
-        load["mode"] = DEFAULT_LOAD["mode"]
+    if load["mode"] not in modes_for(load):
+        load["mode"] = MODE_SELF if load["type"] == LOAD_BATTERY else DEFAULT_LOAD["mode"]
     return load
 
 
@@ -92,6 +107,6 @@ class SolarMindStore:
 
     async def async_set_mode(self, load_id: str, mode: str) -> None:
         load = self.get_load(load_id)
-        if load and mode in MODES:
+        if load and mode in modes_for(load):
             load["mode"] = mode
             await self.async_save()

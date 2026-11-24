@@ -5,7 +5,7 @@ import { cardStyles, fmtClockIn, fmtEta, fmtKwh, splitW, tokens } from "../style
 import type { LiveLoad, Load, Mode } from "../types";
 import "./shared/sm-segmented";
 import "./shared/sm-sparkline";
-import { modeOptions, reasonIcon, reasonTone } from "./common";
+import { defaultIcon, isBattery, modeOptions, reasonIcon, reasonTone } from "./common";
 
 /** Dashboard card for one load, in the style of a RoomMind room card. */
 @customElement("sm-load-card")
@@ -43,6 +43,7 @@ export class SmLoadCard extends LitElement {
       .main { display: flex; align-items: flex-start; padding: 6px 16px 0; gap: 12px; }
       .big { display: flex; align-items: flex-start; gap: 4px; }
       .big .v { font-size: 48px; font-weight: 300; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+      .big .dir { --mdc-icon-size: 26px; margin-top: 12px; color: var(--secondary-text-color); }
       .big .u { font-size: 18px; color: var(--secondary-text-color); margin-top: 6px; }
       .eta { color: var(--primary-text-color); }
       .eta.est { color: var(--secondary-text-color); }
@@ -79,6 +80,11 @@ export class SmLoadCard extends LitElement {
     const l = this.load;
     if (!lv) return null;
     if (lv.driver_error) return `${t("hint.driver_error")}: ${lv.driver_error}`;
+    if (isBattery(l)) {
+      if (l.mode === "solar_night" && lv.night_needed === true) return t("hint.bat_night");
+      if (lv.reason === "peak_guard" && (lv.power_w ?? 0) < 0) return t("hint.bat_peak");
+      return lv.stored_kwh != null ? `${fmtKwh(lv.stored_kwh, 1)} ${t("hint.bat_stored")}` : null;
+    }
     if (l.type === "ev" && lv.car_state === "NoPower") return t("hint.no_power");
     if (lv.reason === "peak_guard") return t("hint.peak");
     if (lv.is_full) return t(l.type === "ev" ? "hint.full_ev" : "hint.full");
@@ -89,8 +95,17 @@ export class SmLoadCard extends LitElement {
     return null;
   }
 
+  private _batEta() {
+    const lv = this.live;
+    if (!lv) return nothing;
+    if (lv.eta_full_s) return html`<span class="eta"><ha-icon icon="mdi:battery-arrow-up"></ha-icon>${t("eta.bat_full").replace("{t}", fmtClockIn(lv.eta_full_s))}</span>`;
+    if (lv.eta_empty_s) return html`<span class="eta"><ha-icon icon="mdi:battery-arrow-down"></ha-icon>${t("eta.bat_empty").replace("{t}", fmtClockIn(lv.eta_empty_s))}</span>`;
+    return nothing;
+  }
+
   private _eta() {
     const lv = this.live;
+    if (isBattery(this.load)) return this._batEta();
     if (this.load.type !== "ev" || !lv || lv.plugged === false) return nothing;
     if (lv.soc != null && lv.soc < 100 && !lv.battery_kwh && lv.eta_full_s == null && lv.eta_limit_s == null) {
       return html`<span class="eta est"><ha-icon icon="mdi:timer-sand"></ha-icon>${t("eta.need_capacity")}</span>`;
@@ -168,12 +183,16 @@ export class SmLoadCard extends LitElement {
   render() {
     const l = this.load;
     const lv = this.live;
-    const [v, u] = splitW(lv?.power_w ?? 0);
+    const bat = isBattery(l);
+    const [v, u] = splitW(bat ? Math.abs(lv?.power_w ?? 0) : lv?.power_w ?? 0);
+    const dir = bat && lv ? (lv.power_w > 1 ? "mdi:arrow-up-bold" : lv.power_w < -1 ? "mdi:arrow-down-bold" : "") : "";
     const reason = lv?.reason ?? "idle";
     const tone = reasonTone(reason);
-    const active = !!lv?.is_on && (lv?.power_w ?? 0) > 1;
-    const icon = l.icon || (l.type === "ev" ? "mdi:ev-station" : "mdi:water-boiler");
-    const nominal = l.type === "ev" ? (l.ev_max_current ?? 16) * 230 * (l.ev_phases ?? 1) : l.nominal_power_w;
+    const active = !!lv?.is_on && Math.abs(lv?.power_w ?? 0) > 1;
+    const icon = l.icon || defaultIcon(l.type);
+    const nominal = l.type === "ev"
+      ? (l.ev_max_current ?? 16) * 230 * (l.ev_phases ?? 1)
+      : bat ? Math.max(l.bat_max_charge_w ?? 0, l.bat_max_discharge_w ?? 0) : l.nominal_power_w;
     const share = lv?.kwh_today ? (lv.solar_kwh_today ?? 0) / lv.kwh_today : null;
     const hint = this._hint();
     return html`<div class="card" @click=${this._open}>
@@ -187,20 +206,22 @@ export class SmLoadCard extends LitElement {
       </div>
       <div class="main">
         <div>
-          <div class="big"><span class="v">${v}</span><span class="u">${u}</span></div>
+          <div class="big">${dir ? html`<ha-icon class="dir" .icon=${dir}></ha-icon>` : nothing}<span class="v">${v}</span><span class="u">${u}</span></div>
           <div class="extra">
             <span class="prio">#${this.priority}</span>
             ${lv?.temperature != null ? html`<span><ha-icon icon="mdi:thermometer"></ha-icon>${lv.temperature.toFixed(1)} °C</span>` : nothing}
-            ${lv?.soc != null ? html`<span><ha-icon icon="mdi:battery-charging"></ha-icon>${Math.round(lv.soc)}%</span>` : nothing}
+            ${lv?.soc != null ? html`<span><ha-icon .icon=${bat ? "mdi:home-battery-outline" : "mdi:battery-charging"}></ha-icon>${Math.round(lv.soc)}%</span>` : nothing}
             ${this._eta()}
             ${!l.enabled ? html`<span>${t("reason.disabled")}</span>` : nothing}
           </div>
           ${this._limitLine()}
         </div>
         <div class="side">
-          <div class="l">${t("load.today")}</div>
+          <div class="l">${bat ? t("load.charged_today") : t("load.today")}</div>
           <div class="v">${fmtKwh(lv?.kwh_today ?? 0, 1)}</div>
-          <div class="s">${share === null ? "" : `${Math.round(share * 100)}% ${t("load.from_solar")}`}</div>
+          <div class="s">${bat
+            ? `${fmtKwh(lv?.discharge_kwh_today ?? 0, 1)} ${t("load.discharged")}`
+            : share === null ? "" : `${Math.round(share * 100)}% ${t("load.from_solar")}`}</div>
         </div>
       </div>
       <div class="chart">
@@ -208,7 +229,7 @@ export class SmLoadCard extends LitElement {
         ${hint ? html`<span class="hint">${hint}</span>` : nothing}
       </div>
       <div class="foot"><div class="seg-wrap">
-        <sm-segmented .options=${modeOptions()} .value=${l.mode}
+        <sm-segmented .options=${modeOptions(l.type)} .value=${l.mode}
           @value-changed=${(e: CustomEvent) => this.dispatchEvent(new CustomEvent("set-mode", { detail: { id: l.id, mode: e.detail.value as Mode }, bubbles: true, composed: true }))}></sm-segmented>
       </div>
       ${l.type === "ev" && l.mode === "solar" ? this._minPowerRow() : nothing}
