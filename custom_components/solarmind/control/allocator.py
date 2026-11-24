@@ -125,6 +125,8 @@ class SiteState:
     grid_budget_w: float = INF  # max average import the peak guard allows right now
     forecast_tomorrow_kwh: float | None = None
     voltage: float = 230.0
+    base_avg_w: float | None = None  # house load without managed loads, averaged (~1.5 min)
+    smooth_bonus_w: float = 0.0  # set by allocate(): extra surplus the average shows vs. now
 
 
 @dataclass
@@ -154,7 +156,12 @@ def actual_power(cfg: dict[str, Any], st: LoadState, voltage: float) -> float:
     if not st.is_on:
         return 0.0
     if st.power_w is not None:
-        return max(0.0, st.power_w)
+        power = max(0.0, st.power_w)
+        if cfg["type"] == LOAD_EV and not cfg.get("power_entity") and st.current_a:
+            # The car's own power reading lags (polled every minute). Right after we lower
+            # the current it would still show the old power, overstating what it draws.
+            power = min(power, st.current_a * voltage * cfg.get("ev_phases", 1) * 1.1)
+        return power
     if cfg["type"] == LOAD_EV:
         amps = st.current_a if st.current_a is not None else cfg["ev_min_current"]
         return amps * voltage * cfg["ev_phases"]
@@ -243,6 +250,8 @@ def allocate(
             managed += actual_power(cfg, st, v)
     base = site.grid_w - managed
     solar_pool = max(0.0, -base)
+    # A passing cloud should not stop a running car: the average surplus may bridge it.
+    site.smooth_bonus_w = max(0.0, max(0.0, -site.base_avg_w) - solar_pool) if site.base_avg_w is not None else 0.0
     headroom = site.grid_budget_w - max(0.0, base) if site.grid_budget_w != INF else INF
     headroom = max(0.0, headroom)
     result = AllocationResult(base_w=base, surplus_w=solar_pool)
@@ -462,6 +471,8 @@ def _decide_grid(
             else:
                 rt.pending_on = None
                 return _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_PEAK), force=True)
+        if avail != INF and amps < cfg["ev_max_current"]:
+            reason = R_PEAK  # turned down to stay under the quarter-hour peak
         dec = Decision(lid, True, current_a=int(amps), reason=reason, allocated_w=amps * wpa, wants_grid=True)
         return _with_timing(cfg, st, rt, site.now, _rate_limit_current(cfg, st, rt, site.now, dec), grid=True)
 
@@ -498,10 +509,22 @@ def _decide_solar(
         if floor_amps and amps < floor_amps:
             return _decide_ev_floor(cfg, st, rt, site, solar_pool, headroom, floor_amps, wpa)
         if amps < cfg["ev_min_current"]:
-            over_budget = headroom != INF and cur_power - solar_pool > headroom
-            reason = R_PEAK if over_budget else R_NO_SURPLUS
-            dec = Decision(lid, False, reason=reason)
-            return _with_timing(cfg, st, rt, site.now, dec, force=over_budget)
+            min_w = cfg["ev_min_current"] * wpa
+            # Peak guard: only when even the minimum current would break the limit, stop at once.
+            over_budget = headroom != INF and min_w - solar_pool > headroom
+            if over_budget:
+                rt.pending_on = None
+                return _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_PEAK), force=True)
+            if st.is_on and solar_pool + site.smooth_bonus_w + tolerance >= min_w:
+                # Short dip (cloud): the averaged surplus still carries the minimum current.
+                dec = Decision(lid, True, current_a=int(cfg["ev_min_current"]), reason=R_SOLAR, allocated_w=min_w)
+                return _with_timing(cfg, st, rt, site.now, _rate_limit_current(cfg, st, rt, site.now, dec))
+            dec = _with_timing(cfg, st, rt, site.now, Decision(lid, False, reason=R_NO_SURPLUS))
+            if dec.on and st.is_on:
+                # Waiting to stop: run at the minimum meanwhile, never at the old (higher) current.
+                dec.current_a = int(cfg["ev_min_current"])
+                dec.allocated_w = min_w
+            return dec
         dec = Decision(lid, True, current_a=int(amps), reason=R_SOLAR, allocated_w=amps * wpa)
         return _with_timing(cfg, st, rt, site.now, _rate_limit_current(cfg, st, rt, site.now, dec))
 

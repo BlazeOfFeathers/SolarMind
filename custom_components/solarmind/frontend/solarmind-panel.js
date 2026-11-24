@@ -2487,7 +2487,7 @@ const At = (t, e) => e.map((i) => ({ value: i, label: r(`s.${t}.${i}`) })), Mt =
     id: "general",
     icon: "mdi:cog-outline",
     fields: [{ key: "enabled", kind: "bool", helper: r("s.enabled.help") }],
-    summary: (e) => `${e.enabled ? r("s.enabled") : r("site.disabled")} · ${r("s.version").replace("{v}", "0.2.2")}`
+    summary: (e) => `${e.enabled ? r("s.enabled") : r("site.disabled")} · ${r("s.version").replace("{v}", "0.2.3")}`
   },
   {
     id: "meter",
@@ -3343,8 +3343,8 @@ let E = class extends k {
     const t = this._config;
     return d`
       ${this._toolbar()}
-      ${t && t.version && t.version !== "0.2.2" ? d`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
-            <span>${r("panel.stale").replace("{server}", t.version).replace("{panel}", "0.2.2")}</span>
+      ${t && t.version && t.version !== "0.2.3" ? d`<div class="stale"><ha-icon icon="mdi:update"></ha-icon>
+            <span>${r("panel.stale").replace("{server}", t.version).replace("{panel}", "0.2.3")}</span>
             <button class="text" @click=${() => location.reload()}>${r("panel.reload")}</button></div>` : m}
       <main>${t ? this._content(t) : m}</main>
       ${this._adding ? d`<sm-dialog .heading=${r("loads.add")} .saveLabel=${r("load.add_save")} .busy=${this._addBusy} .error=${this._addError}

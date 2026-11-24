@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -43,6 +44,8 @@ _LOGGER = logging.getLogger(__name__)
 
 HISTORY_SAVE_DELAY = 300
 
+
+BASE_AVG_S = 90  # window of the averaged house load used to ride out clouds
 
 def battery_live(cfg: dict[str, Any], st: LoadState, dec: Decision) -> dict[str, Any]:
     """Setpoint and time to full / to the reserve at the present power."""
@@ -102,6 +105,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_prune_day = ""
         self.live: dict[str, Any] = {"site": {}, "loads": {}}
         self._listeners_ws: set[Any] = set()
+        self._base_hist: deque[tuple[float, float]] = deque()  # (ts, house base W) for cloud bridging
         self.notifier = NotificationTracker(lang="nl" if str(hass.config.language).startswith("nl") else "en")
         self._ev_power: dict[str, PowerAverager] = {}
         self._ev_capacity: dict[str, CapacityLearner] = {}
@@ -225,9 +229,14 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             base_w = surplus_w = 0.0
             headroom = INF
         else:
+            while self._base_hist and now - self._base_hist[0][0] > BASE_AVG_S:
+                self._base_hist.popleft()
+            if self._base_hist:
+                site.base_avg_w = sum(b for _, b in self._base_hist) / len(self._base_hist)
             result = allocate(site, loads, states, self.runtimes)
             result_decisions = result.decisions
             base_w, surplus_w, headroom = result.base_w, result.surplus_w, result.grid_headroom_w
+            self._base_hist.append((now, base_w))
 
         # A battery SolarMind cannot steer (disabled, no grid reading, master switch off)
         # goes back to the inverter's own control instead of keeping its last setpoint.
