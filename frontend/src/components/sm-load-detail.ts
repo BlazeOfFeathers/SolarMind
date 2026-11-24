@@ -338,7 +338,7 @@ export class SmLoadDetail extends LitElement {
       {
         title: t("f.section.plan"),
         show: notBat,
-        meta: () => (this.live?.plan ? "" : t("detail.plan_inactive")),
+        meta: () => (this.live?.plan_active ? "" : t("detail.plan_trial")),
         rows: [
           {
             icon: "mdi:water-thermometer-outline", title: t("detail.plan_need"), show: isSwitch,
@@ -365,7 +365,7 @@ export class SmLoadDetail extends LitElement {
             ],
           },
           {
-            icon: "mdi:calendar-check-outline", title: t("detail.plan_now"), show: () => !!this.live?.plan,
+            icon: "mdi:calendar-check-outline", title: this.live?.plan_active ? t("detail.plan_now") : t("detail.plan_would"), show: () => !!this.live?.plan,
             secondary: () => {
               const p = this.live?.plan;
               if (!p) return "";

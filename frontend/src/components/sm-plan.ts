@@ -58,6 +58,8 @@ export class SmPlan extends LitElement {
       .sum .warn { color: var(--sm-warn-text); }
       .empty { padding: 24px 16px; color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
       .chart { padding: 8px 16px 0; }
+      .trial { margin: 0 16px 12px; padding: 10px 12px; border-radius: var(--sm-radius-sm); font-size: 13px; line-height: 1.5;
+        background: color-mix(in srgb, var(--sm-warn) 14%, transparent); color: var(--sm-warn-text); }
     `,
   ];
 
@@ -194,7 +196,6 @@ export class SmPlan extends LitElement {
     const d = this._data;
     const head = html`<div class="card-head"><h2>${t("plan.title")}</h2></div>`;
     if (!d) return nothing;
-    if (!d.enabled) return html`<div class="card">${head}<div class="empty">${t("plan.disabled")}</div></div>`;
     const plan = d.plan;
     if (!plan?.slots?.length) return html`<div class="card">${head}<div class="empty">${t("plan.none")}</div></div>`;
     const first = plan.slots[0];
@@ -207,6 +208,7 @@ export class SmPlan extends LitElement {
     const src = d.info?.pv_source ?? "none";
     return html`<div class="card">
       ${head}
+      ${d.enabled ? nothing : html`<div class="trial">${t("plan.trial")}</div>`}
       <div class="bar">
         <span class="meta">${t("plan.updated").replace("{t}", hhmm(plan.created))} · ${t(`plan.pv_source.${src}`)}</span>
         <sm-segmented size="sm" .options=${[{ value: "24", label: "24 u" }, { value: "36", label: "36 u" }]} .value=${String(this._hours)}
