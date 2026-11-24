@@ -7,6 +7,7 @@ import type { Hass, Settings } from "../types";
 import type { FieldSpec } from "./shared/sm-form";
 import "./shared/sm-form";
 import "./shared/sm-list-row";
+import "./sm-logs";
 
 interface Category {
   id: string;
@@ -93,6 +94,11 @@ const categories = (hass: Hass): Category[] => [
     ],
     summary: (s) => `€ ${s.price_import} / € ${s.price_export}`,
   },
+  {
+    id: "debug", icon: "mdi:bug-outline",
+    fields: [],
+    summary: () => t("s.cat.debug.summary"),
+  },
 ];
 
 /** Settings as categories (list) with the chosen category's form next to it. Saves on change. */
@@ -169,8 +175,10 @@ export class SmSettings extends LitElement {
             </div>
             <div class="card-body">
               <p class="desc">${t(`s.cat.${cat!.id}.desc`)}</p>
-              <sm-form .hass=${this.hass} prefix="s" .fields=${cat!.fields} .data=${this._draft}
-                @value-changed=${(e: CustomEvent) => this._change(e.detail.key, e.detail.value)}></sm-form>
+              ${cat!.id === "debug"
+                ? html`<sm-logs .hass=${this.hass}></sm-logs>`
+                : html`<sm-form .hass=${this.hass} prefix="s" .fields=${cat!.fields} .data=${this._draft}
+                    @value-changed=${(e: CustomEvent) => this._change(e.detail.key, e.detail.value)}></sm-form>`}
               ${cat!.id === "notify"
                 ? html`<div class="test"><button class="text" ?disabled=${!(this._draft.notify_services ?? []).length}
                     @click=${this._test}>${t("s.notify.test")}</button><span>${this._testMsg}</span></div>`

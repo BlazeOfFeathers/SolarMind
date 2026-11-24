@@ -22,6 +22,7 @@ from .const import (
     VERSION,
 )
 from .history import day_key, rhythm, summarize
+from .logbuffer import async_get_log_buffer
 
 
 def _coord(hass: HomeAssistant):
@@ -244,6 +245,34 @@ def ws_analytics(hass: HomeAssistant, connection, msg) -> None:
     connection.send_result(msg["id"], payload)
 
 
+def _logs_payload(hass: HomeAssistant) -> dict[str, Any]:
+    buffer = async_get_log_buffer(hass.data.setdefault(DOMAIN, {}))
+    return {"entries": list(buffer.entries), "verbose": buffer.verbose, "max": buffer.entries.maxlen}
+
+
+@websocket_api.websocket_command({vol.Required("type"): "solarmind/logs"})
+@websocket_api.require_admin
+@callback
+def ws_logs(hass: HomeAssistant, connection, msg) -> None:
+    connection.send_result(msg["id"], _logs_payload(hass))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "solarmind/logs/clear"})
+@websocket_api.require_admin
+@callback
+def ws_logs_clear(hass: HomeAssistant, connection, msg) -> None:
+    async_get_log_buffer(hass.data.setdefault(DOMAIN, {})).clear()
+    connection.send_result(msg["id"], _logs_payload(hass))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "solarmind/logs/verbose", vol.Required("enabled"): bool})
+@websocket_api.require_admin
+@callback
+def ws_logs_verbose(hass: HomeAssistant, connection, msg) -> None:
+    async_get_log_buffer(hass.data.setdefault(DOMAIN, {})).set_verbose(msg["enabled"])
+    connection.send_result(msg["id"], _logs_payload(hass))
+
+
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     data = hass.data.setdefault(DOMAIN, {})
     if data.get("ws_registered"):
@@ -259,6 +288,9 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
         ws_load_reorder,
         ws_load_set_mode,
         ws_analytics,
+        ws_logs,
+        ws_logs_clear,
+        ws_logs_verbose,
     ):
         websocket_api.async_register_command(hass, handler)
     data["ws_registered"] = True
