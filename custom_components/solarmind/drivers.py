@@ -26,6 +26,8 @@ _LOGGER = logging.getLogger(__name__)
 RESEND_AFTER_S = 60
 TESLA_POLL_S = 60
 TESLA_TIMEOUT_S = 30
+TESLA_WAKE_TIMEOUT_S = 60
+TESLA_WAKE_RETRY_S = 600  # without any known state, wake the car at most every 10 min to read it
 BAD_STATES = (STATE_UNAVAILABLE, STATE_UNKNOWN, None)
 
 
@@ -159,6 +161,7 @@ class TeslaBleProxyDriver(BaseDriver):
         super().__init__(hass, cfg)
         self._charge_state: dict[str, Any] | None = None
         self._last_poll = 0.0
+        self._last_wake = -TESLA_WAKE_RETRY_S
         self._fail_count = 0
 
     @property
@@ -170,25 +173,46 @@ class TeslaBleProxyDriver(BaseDriver):
         if not force and now - self._last_poll < TESLA_POLL_S:
             return
         self._last_poll = now
+        if await self._fetch_charge_state(wakeup=False):
+            return
+        # The proxy does not wake a sleeping car for vehicle_data. Without any known state
+        # (e.g. right after a Home Assistant restart) SolarMind could never decide to start
+        # charging, so wake the car to read it, but not more than every 10 minutes.
+        if self._charge_state is None and now - self._last_wake >= TESLA_WAKE_RETRY_S:
+            self._last_wake = now
+            _LOGGER.info("Tesla BLE proxy: no charge state yet, waking the car to read it")
+            await self._fetch_charge_state(wakeup=True)
+        # On other failures (car asleep, BLE out of range) keep the last known state: commands
+        # sent through the proxy wake the car anyway.
+
+    async def _fetch_charge_state(self, wakeup: bool) -> bool:
         session = async_get_clientsession(self.hass)
+        params = {"endpoints": "charge_state"}
+        if wakeup:
+            params["wakeup"] = "true"
         try:
             async with session.get(
                 f"{self._base}/vehicle_data",
-                params={"endpoints": "charge_state"},
-                timeout=aiohttp.ClientTimeout(total=TESLA_TIMEOUT_S),
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=TESLA_WAKE_TIMEOUT_S if wakeup else TESLA_TIMEOUT_S),
             ) as resp:
                 data = await resp.json(content_type=None)
-            cs = _find_key(data, "charge_state")
-            if isinstance(cs, dict):
-                self._charge_state = cs
-                self._fail_count = 0
-                return
-            self._fail_count += 1
+                status = resp.status
         except (aiohttp.ClientError, TimeoutError, ValueError) as err:
             self._fail_count += 1
             _LOGGER.debug("Tesla BLE proxy poll failed: %s", err)
-        # On failures (car asleep, BLE out of range) keep the last known state: commands
-        # sent through the proxy wake the car anyway.
+            return False
+        cs = _find_key(data, "charge_state")
+        if isinstance(cs, dict):
+            if self._fail_count:
+                _LOGGER.debug("Tesla BLE proxy poll OK again after %s failures", self._fail_count)
+            self._charge_state = cs
+            self._fail_count = 0
+            return True
+        self._fail_count += 1
+        reason = _find_key(data, "reason") if isinstance(data, dict) else None
+        _LOGGER.debug("Tesla BLE proxy returned no charge_state (HTTP %s): %s", status, reason or data)
+        return False
 
     async def _command(self, command: str, body: dict[str, Any] | None = None) -> bool:
         session = async_get_clientsession(self.hass)

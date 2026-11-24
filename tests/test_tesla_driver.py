@@ -50,3 +50,25 @@ async def test_disconnected(hass: HomeAssistant, aioclient_mock) -> None:
     aioclient_mock.get(f"{BASE}/vehicle_data", json={"charge_state": {"charging_state": "Disconnected"}})
     st = await TeslaBleProxyDriver(hass, _cfg()).async_read()
     assert st.plugged is False
+
+
+async def test_asleep_without_state_wakes_once(hass: HomeAssistant, aioclient_mock) -> None:
+    """After a restart the car may sleep: wake it once to learn its state, then not again."""
+    aioclient_mock.get(
+        f"{BASE}/vehicle_data", params={"endpoints": "charge_state", "wakeup": "true"},
+        json={"response": {"response": {"charge_state": {"charging_state": "Stopped", "battery_level": 50}}}},
+    )
+    aioclient_mock.get(
+        f"{BASE}/vehicle_data", params={"endpoints": "charge_state"},
+        status=503, json={"response": {"result": False, "reason": "vehicle is sleeping"}},
+    )
+    drv = TeslaBleProxyDriver(hass, _cfg())
+    st = await drv.async_read()
+    assert st.available and st.plugged and not st.is_on and st.soc == 50
+    wake_calls = [c for c in aioclient_mock.mock_calls if "wakeup" in str(c[1])]
+    assert len(wake_calls) == 1
+    # Later polls while asleep keep the last state and do not wake the car again.
+    drv._last_poll = 0.0
+    st = await drv.async_read()
+    assert st.available and st.soc == 50
+    assert len([c for c in aioclient_mock.mock_calls if "wakeup" in str(c[1])]) == 1
