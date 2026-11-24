@@ -273,3 +273,47 @@ def test_ev_min_power_only_in_solar_mode():
     car = ev(ev_min_power_w=2000, mode=MODE_SOLAR_NIGHT)
     d, _ = run(-500, [car], {"ev": LoadState(is_on=False, soc=50)})
     assert d["ev"].on is False and d["ev"].reason == R_NO_SURPLUS
+
+
+def test_peak_guard_turns_ev_down_before_stopping_mode_on():
+    car = ev(mode=MODE_ON)
+    # Car at 13 A (2990 W); microwave pushes the house to 1500 W import; budget 4000 W.
+    st = {"ev": LoadState(is_on=True, power_w=2990, current_a=13, plugged=True, soc=50)}
+    d, _ = run(1500 + 2990, [car], st, grid_budget_w=4000)
+    assert d["ev"].on is True and d["ev"].current_a == 10 and d["ev"].reason == R_PEAK  # 2500 W left -> 10 A
+    # Even 6 A does not fit any more: stop at once.
+    d, _ = run(3000 + 2990, [car], st, grid_budget_w=4000)
+    assert d["ev"].on is False and d["ev"].reason == R_PEAK
+
+
+def test_solar_ev_peak_only_forces_stop_when_minimum_does_not_fit():
+    car = ev(stop_delay_s=120)
+    st = {"ev": LoadState(is_on=True, power_w=2990, current_a=13, plugged=True, soc=50)}
+    rts = {"ev": LoadRuntime(last_switch_ts=0)}
+    # Surplus vanished (cloud + microwave): house imports 300 W, budget 2500 W -> 6 A still fits.
+    d, _ = run(300 + 2990, [car], st, rts, grid_budget_w=2500)
+    assert d["ev"].reason == R_WAIT_STOP and d["ev"].on is True and d["ev"].current_a == 6
+    # Budget so tight that 6 A would break it: immediate stop.
+    d, _ = run(300 + 2990, [car], st, {"ev": LoadRuntime(last_switch_ts=0)}, grid_budget_w=1000)
+    assert d["ev"].on is False and d["ev"].reason == R_PEAK
+
+
+def test_solar_ev_rides_out_a_cloud_with_the_average():
+    car = ev()
+    st = {"ev": LoadState(is_on=True, power_w=1380, current_a=6, plugged=True, soc=50)}
+    # Now: only 600 W surplus besides the car; average of the last minute: 2500 W surplus.
+    # grid = car 1380 W - 600 W surplus -> house base -600 W
+    d, _ = run(1380 - 600, [car], st, base_avg_w=-2500)
+    assert d["ev"].on is True and d["ev"].current_a == 6 and d["ev"].reason == R_SOLAR
+    # Without the average it would start stopping.
+    d, _ = run(1380 - 600, [car], st)
+    assert d["ev"].reason != R_SOLAR
+
+
+def test_tesla_power_reading_capped_by_requested_current():
+    from custom_components.solarmind.control.allocator import actual_power
+
+    car = ev()
+    assert actual_power(car, LoadState(is_on=True, power_w=3000, current_a=6), 230) == 6 * 230 * 1.1
+    car_meter = ev(power_entity="sensor.wallbox_power")
+    assert actual_power(car_meter, LoadState(is_on=True, power_w=3000, current_a=6), 230) == 3000

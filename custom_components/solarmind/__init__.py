@@ -85,7 +85,8 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
                     "name": "solarmind-panel",
                     "embed_iframe": False,
                     "trust_external": False,
-                    "module_url": f"/{PANEL_URL}/{PANEL_JS}?v={VERSION}",
+                    # Version + file time: a new download always busts the browser cache.
+                    "module_url": f"/{PANEL_URL}/{PANEL_JS}?v={VERSION}-{int(panel_js.stat().st_mtime)}",
                 }
             },
         )
