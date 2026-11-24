@@ -69,7 +69,8 @@
           "not_connected": "Not plugged in",
           "self_consumption": "Covering the house",
           "reserve": "At reserve",
-          "battery_full": "Battery full"
+          "battery_full": "Battery full",
+          "forecast_wait": "Waiting for forecast sun"
         }
       },
       "time_to_full": {

@@ -19,6 +19,10 @@
 - **Analytics** per verbruiker en voor het hele huis: tijdlijn met zon/net-verdeling en waarom iets aan of uit ging, samenvatting (kWh, aandeel zon, looptijd, starts, besparing), per dag, dagritme, laadsessies en kwartierpieken.
 - **Entities** per verbruiker (modus-select, vermogen, energie vandaag, aandeel zon, status, actief) en voor het huis (overschot, kwartiergemiddelde, maandpiek, ...), voor je dashboards en automaties.
 
+- **Zonnevoorspelling** (Solcast / Forecast.Solar), in te stellen onder *Instellingen → Zonnevoorspelling*:
+  - *Auto voor boilers op een zonnige dag*: komt er vandaag nog genoeg zon om de boilers later te vullen, dan krijgt de auto het overschot eerst. Zakt de voorspelling onder wat de boilers nog nodig hebben, dan geldt weer je gewone volgorde.
+  - *Minimaal laadvermogen wacht op de zon*: in modus Zon vult de auto zijn minimale laadvermogen niet aan van het net zolang er vandaag nog genoeg zon verwacht wordt.
+  - Je kiest op welk deel van de voorspelling SolarMind rekent (standaard 80%) en hoeveel zon het huis zelf nog opgebruikt. Het paneel toont wat SolarMind op dit moment beslist.
 - **Meldingen** naar je gsm (Home Assistant-app): als de piekbewaking toestellen afschakelt en weer vrijgeeft, als de auto een laadopdracht weigert of klaar is met laden, en als een verbruiker of de netmeter onbereikbaar is. In te stellen onder *Instellingen → Meldingen*, met een testknop.
 
 ## Installatie
