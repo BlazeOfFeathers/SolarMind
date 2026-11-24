@@ -21,13 +21,13 @@ async def test_read_and_command(hass: HomeAssistant, aioclient_mock) -> None:
     aioclient_mock.get(
         f"{BASE}/vehicle_data",
         json={"response": {"result": True, "response": {"charge_state": {
-            "charging_state": "Stopped", "battery_level": 55, "charge_current_request": 16, "charger_power": 0}}}},
+            "charging_state": "Stopped", "battery_level": 55, "charge_limit_soc": 80, "charge_current_request": 16, "charger_power": 0}}}},
     )
     aioclient_mock.post(f"{BASE}/command/set_charging_amps", json={"response": {"result": True}})
     aioclient_mock.post(f"{BASE}/command/charge_start", json={"response": {"result": True}})
     drv = TeslaBleProxyDriver(hass, _cfg())
     st = await drv.async_read()
-    assert st.available and st.plugged and not st.is_on and st.soc == 55
+    assert st.available and st.plugged and not st.is_on and st.soc == 55 and st.charge_limit == 80
     changed = await drv.async_apply(st, Decision("ev", True, current_a=8))
     assert changed
     calls = [(c[0], str(c[1])) for c in aioclient_mock.mock_calls]

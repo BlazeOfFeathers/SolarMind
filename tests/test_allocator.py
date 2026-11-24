@@ -267,3 +267,9 @@ def test_ev_min_power_respects_peak_guard():
     assert d.on is True and d.current_a == 7 and d.reason == R_PEAK
     d, _ = run(1500, [car], {"ev": LoadState(is_on=False, soc=50)}, grid_budget_w=2500)
     assert d["ev"].on is False and d["ev"].reason == R_PEAK
+
+
+def test_ev_min_power_only_in_solar_mode():
+    car = ev(ev_min_power_w=2000, mode=MODE_SOLAR_NIGHT)
+    d, _ = run(-500, [car], {"ev": LoadState(is_on=False, soc=50)})
+    assert d["ev"].on is False and d["ev"].reason == R_NO_SURPLUS

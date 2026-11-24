@@ -23,6 +23,7 @@ from ..const import (
     LOAD_EV,
     MODE_OFF,
     MODE_ON,
+    MODE_SOLAR,
     MODE_SOLAR_NIGHT,
     R_ALWAYS_ON,
     R_DISABLED,
@@ -59,6 +60,7 @@ class LoadState:
     soc: float | None = None
     temperature: float | None = None
     plugged: bool | None = None  # EV cable connected (None = unknown, assume yes)
+    charge_limit: float | None = None  # EV charge limit set in the car (%)
 
 
 @dataclass
@@ -376,13 +378,13 @@ def _decide_solar(
 
 
 def _ev_floor_amps(cfg: dict[str, Any], st: LoadState, wpa: float) -> int:
-    """Amps the car always gets in the solar modes (0 = no minimum power set).
+    """Amps the car always gets in Solar mode (0 = no minimum power set).
 
     The minimum stops once the car reaches its target SoC (when the SoC is known),
     so the grid never fills the battery to the top; surplus still may.
     """
     min_w = cfg.get("ev_min_power_w") or 0
-    if min_w <= 0:
+    if min_w <= 0 or cfg["mode"] != MODE_SOLAR:
         return 0
     if st.soc is not None and st.soc >= cfg.get("ev_target_soc", 80):
         return 0

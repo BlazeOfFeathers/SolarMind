@@ -154,6 +154,24 @@ async def ws_load_set_mode(hass: HomeAssistant, connection, msg) -> None:
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): "solarmind/loads/set_ev_min_power",
+        vol.Required("load_id"): str,
+        vol.Required("power_w"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=50000))),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_load_set_ev_min_power(hass: HomeAssistant, connection, msg) -> None:
+    coordinator = _coord(hass)
+    if coordinator is None:
+        return _not_ready(connection, msg)
+    await coordinator.store.async_set_ev_min_power(msg["load_id"], msg["power_w"])
+    await coordinator.async_request_refresh()
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): "solarmind/analytics",
         vol.Optional("load_id"): vol.Any(str, None),
         vol.Optional("start"): vol.Coerce(float),
@@ -206,6 +224,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
         ws_settings_save,
         ws_load_save,
         ws_load_delete,
+        ws_load_set_ev_min_power,
         ws_load_reorder,
         ws_load_set_mode,
         ws_analytics,

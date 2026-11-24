@@ -68,6 +68,12 @@
           "disabled": "Uitgeschakeld",
           "not_connected": "Niet ingeplugd"
         }
+      },
+      "time_to_full": {
+        "name": "Tijd tot vol"
+      },
+      "time_to_limit": {
+        "name": "Tijd tot laadlimiet"
       }
     },
     "select": {

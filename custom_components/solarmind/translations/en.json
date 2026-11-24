@@ -68,6 +68,12 @@
           "disabled": "Disabled",
           "not_connected": "Not plugged in"
         }
+      },
+      "time_to_full": {
+        "name": "Time to full"
+      },
+      "time_to_limit": {
+        "name": "Time to charge limit"
       }
     },
     "select": {
