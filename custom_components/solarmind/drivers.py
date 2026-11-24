@@ -165,8 +165,8 @@ class TeslaBleProxyDriver(BaseDriver):
     def __init__(self, hass: HomeAssistant, cfg: dict[str, Any]) -> None:
         super().__init__(hass, cfg)
         self._charge_state: dict[str, Any] | None = None
-        self._last_poll = 0.0
-        self._last_wake = -TESLA_WAKE_RETRY_S
+        self._last_poll = float("-inf")
+        self._last_wake = float("-inf")
         self._fail_count = 0
 
     @property
@@ -297,7 +297,7 @@ class TeslaBleProxyDriver(BaseDriver):
                 # Re-read in ~20 s: the car needs a moment before it reports the new state.
                 self._last_poll = time.monotonic() - TESLA_POLL_S + 20
             else:
-                self._last_poll = 0.0  # re-read right away
+                self._last_poll = float("-inf")  # re-read right away
         return changed
 
 

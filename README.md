@@ -19,6 +19,8 @@
 - **Analytics** per verbruiker en voor het hele huis: tijdlijn met zon/net-verdeling en waarom iets aan of uit ging, samenvatting (kWh, aandeel zon, looptijd, starts, besparing), per dag, dagritme, laadsessies en kwartierpieken.
 - **Entities** per verbruiker (modus-select, vermogen, energie vandaag, aandeel zon, status, actief) en voor het huis (overschot, kwartiergemiddelde, maandpiek, ...), voor je dashboards en automaties.
 
+- **Meldingen** naar je gsm (Home Assistant-app): als de piekbewaking toestellen afschakelt en weer vrijgeeft, als de auto een laadopdracht weigert of klaar is met laden, en als een verbruiker of de netmeter onbereikbaar is. In te stellen onder *Instellingen → Meldingen*, met een testknop.
+
 ## Installatie
 
 1. HACS → Integraties → menu → *Aangepaste repositories* → voeg `https://github.com/BlazeOfFeathers/SolarMind` toe als *Integratie*.

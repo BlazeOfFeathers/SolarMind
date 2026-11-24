@@ -68,7 +68,7 @@ async def test_asleep_without_state_wakes_once(hass: HomeAssistant, aioclient_mo
     wake_calls = [c for c in aioclient_mock.mock_calls if "wakeup" in str(c[1])]
     assert len(wake_calls) == 1
     # Later polls while asleep keep the last state and do not wake the car again.
-    drv._last_poll = 0.0
+    drv._last_poll = float("-inf")
     st = await drv.async_read()
     assert st.available and st.soc == 50
     assert len([c for c in aioclient_mock.mock_calls if "wakeup" in str(c[1])]) == 1

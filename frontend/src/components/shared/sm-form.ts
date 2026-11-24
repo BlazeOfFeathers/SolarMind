@@ -5,7 +5,7 @@ import { tokens } from "../../styles/tokens";
 import type { Hass } from "../../types";
 import "./sm-toggle";
 
-export type FieldKind = "number" | "text" | "bool" | "entity" | "select" | "time";
+export type FieldKind = "number" | "text" | "bool" | "entity" | "select" | "time" | "multi";
 
 export interface FieldSpec {
   key: string;
@@ -34,6 +34,7 @@ export class SmForm extends LitElement {
     tokens,
     css`
       :host { display: flex; flex-direction: column; gap: 14px; }
+      .field.multi { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--secondary-text-color); }
       label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--secondary-text-color); }
       .wrap { position: relative; display: flex; align-items: center; }
       input, select {
@@ -108,6 +109,17 @@ export class SmForm extends LitElement {
               this._emit(f.key, raw === "" ? (f.nullable ? null : 0) : Number(raw));
             }} />${f.unit ? html`<span class="unit">${f.unit}</span>` : nothing}</span>
           ${f.helper ? html`<span class="help">${f.helper}</span>` : nothing}</label>`;
+      case "multi": {
+        const sel: string[] = Array.isArray(v) ? v : [];
+        const opts = f.options ?? [];
+        return html`<div class="field multi"><span>${label}</span>
+          ${opts.length
+            ? opts.map((o) => html`<div class="bool"><span class="txt">${o.label}</span>
+                <sm-toggle .checked=${sel.includes(o.value)} @change=${(e: CustomEvent) =>
+                  this._emit(f.key, e.detail.checked ? [...sel, o.value] : sel.filter((x) => x !== o.value))}></sm-toggle></div>`)
+            : html`<span class="help">${t("form.no_options")}</span>`}
+          ${f.helper ? html`<span class="help">${f.helper}</span>` : nothing}</div>`;
+      }
       case "time":
         return html`<label class="field">${label}
           <input type="time" .value=${v ?? ""} @change=${(e: Event) => this._emit(f.key, (e.target as HTMLInputElement).value)} /></label>`;

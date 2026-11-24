@@ -36,6 +36,7 @@ from .control.eta import MIN_CHARGING_W, CapacityLearner, PowerAverager, capacit
 from .control.peak import PeakTracker, month_key_of
 from .drivers import BaseDriver, make_driver, read_float
 from .history import HistoryData, LoadSample
+from .notifier import NotificationTracker, async_send, notify_targets
 from .store import SolarMindStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_prune_day = ""
         self.live: dict[str, Any] = {"site": {}, "loads": {}}
         self._listeners_ws: set[Any] = set()
+        self.notifier = NotificationTracker(lang="nl" if str(hass.config.language).startswith("nl") else "en")
         self._ev_power: dict[str, PowerAverager] = {}
         self._ev_capacity: dict[str, CapacityLearner] = {}
 
@@ -345,6 +347,7 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "order": [cfg["id"] for cfg in loads],
         }
 
+        self._notify(now, loads, settings)
         self._persist_runtime()
         self.store.schedule_save(60)
         if self.history.dirty:
@@ -416,6 +419,15 @@ class SolarMindCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lim = time_to_soc_s(st.soc, limit, capacity, power)
             out["eta_limit_s"] = None if lim is None else round(lim)
         return out
+
+    def _notify(self, now: float, loads: list[dict[str, Any]], settings: dict[str, Any]) -> None:
+        try:
+            messages = self.notifier.update(now, self.live, loads, settings)
+        except Exception:  # noqa: BLE001 - notifications must never break control
+            _LOGGER.exception("SolarMind: evaluating notifications failed")
+            return
+        if messages and notify_targets(settings):
+            self.hass.async_create_task(async_send(self.hass, settings, messages))
 
     def _persist_runtime(self) -> None:
         self.store.runtime = {

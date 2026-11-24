@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "solarmind"
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 PLATFORMS = ["sensor", "select", "switch", "binary_sensor"]
 
@@ -119,6 +119,11 @@ DEFAULT_SETTINGS: dict = {
     "price_import": 0.30,
     "price_export": 0.04,
     "voltage": 230,
+    # Notifications (notify.* services, e.g. the Companion app)
+    "notify_services": [],
+    "notify_peak": True,
+    "notify_ev": True,
+    "notify_faults": True,
 }
 
 DEFAULT_LOAD: dict = {
